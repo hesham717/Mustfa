@@ -759,8 +759,8 @@ public class VideoPlayerActivity extends ThemedActivity {
     registerReceiver(storageReceiver, filter);
   }
 
-  private final Player.EventListener playerListener =
-      new Player.EventListener() {
+    private final Player.Listener playerListener =
+      new Player.Listener() {
         @Override
         public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
           updatePlayButton();
