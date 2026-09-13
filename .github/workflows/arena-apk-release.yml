@@ -1,0 +1,78 @@
+name: Arena APK release
+
+on:
+  push:
+    branches:
+      - arena/01a098dc-mustfa
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish-apk:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 for Android SDK tools
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-31" "build-tools;31.0.0"
+
+      - name: Set up JDK 11 for Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Build fdroid debug APK
+        run: ./gradlew --no-daemon -PskipGoogleServices :app:assembleFdroidDebug --stacktrace
+
+      - name: Prepare APK
+        id: apk
+        run: |
+          set -e
+          APK_PATH=$(find app/build/outputs/apk -name "*.apk" | head -1)
+          echo "found $APK_PATH"
+          cp "$APK_PATH" Mustfa-ui-polish-debug.apk
+          ls -lh Mustfa-ui-polish-debug.apk
+          sha256sum Mustfa-ui-polish-debug.apk | tee apk-sha256.txt
+          echo "sha256=$(cut -d' ' -f1 apk-sha256.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release with APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ui-polish-${{ github.run_number }}
+          SHA256: ${{ steps.apk.outputs.sha256 }}
+        run: |
+          set -e
+          NOTES=$(cat <<EOF
+          Debug APK built from commit ${GITHUB_SHA} on branch \`arena/01a098dc-mustfa\`.
+
+          * Flavour: **fdroid debug** (no Google services), app id \`com.droidtechlab.filemanager.debug\`
+            so it installs next to any existing install.
+          * Contents: UX/UI polish pass only (layouts, drawables, values) - the file manager and
+            video player behaviour is unchanged.
+          * SHA-256 of the APK: \`${SHA256}\`
+
+          This is a test build, not an official release.
+          EOF
+          )
+          gh release create "$TAG" Mustfa-ui-polish-debug.apk \
+            --target "$GITHUB_SHA" \
+            --title "UI polish test build ($TAG)" \
+            --notes "$NOTES" \
+            --prerelease
+          gh release view "$TAG" --json assets --jq '.assets[].name'
