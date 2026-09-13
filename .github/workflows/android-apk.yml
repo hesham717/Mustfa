@@ -21,7 +21,7 @@ jobs:
       - name: Check out requested source commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || 'f63772c26cb49e88d134f406038554f7eb455b9d' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.sha }}
 
       - name: Set up JDK 17 for Android SDK tools
         uses: actions/setup-java@v4
@@ -45,7 +45,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build fdroid debug APK
-        run: ./gradlew --no-daemon :app:assembleFdroidDebug --stacktrace
+        run: ./gradlew --no-daemon -PskipGoogleServices :app:assembleFdroidDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
