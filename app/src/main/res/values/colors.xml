@@ -120,4 +120,22 @@
     <!-- Error error for InputTextLayout -->
     <color name="error_color_material">#F4511E</color>
 
+    <!-- UX/UI polish pass -->
+    <!-- Hairline under the breadcrumb bar; the app bar is painted with the user
+         selected skin color, so a translucent white line works for every skin. -->
+    <color name="appbar_divider">#33FFFFFF</color>
+    <!-- Search bar (always a light surface, even on dark themes) -->
+    <color name="search_surface">#FFFFFFFF</color>
+    <color name="search_hint_text">#8A000000</color>
+    <color name="search_icon">#DE000000</color>
+    <!-- Video player chrome -->
+    <color name="player_scrim_top">#CC000000</color>
+    <color name="player_scrim_bottom">#E6000000</color>
+    <color name="player_panel">#D9151320</color>
+    <color name="player_control_surface">#33FFFFFF</color>
+    <color name="player_control_border">#33FFFFFF</color>
+    <color name="player_play_surface">#59FFFFFF</color>
+    <color name="player_secondary_text">#E6FFFFFF</color>
+    <color name="player_seek_track">#59FFFFFF</color>
+
 </resources>

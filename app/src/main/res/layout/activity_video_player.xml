@@ -27,16 +27,16 @@
             android:id="@+id/player_top_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#B3131320"
+            android:background="@drawable/player_scrim_top"
             android:gravity="center_vertical"
-            android:minHeight="64dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp">
+            android:minHeight="@dimen/player_top_bar_height"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
 
             <ImageButton
                 android:id="@+id/player_close"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="@dimen/touch_target"
+                android:layout_height="@dimen/touch_target"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/player_close"
                 android:src="@drawable/ic_close_white_24dp"
@@ -47,17 +47,19 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:ellipsize="middle"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
                 android:gravity="center_vertical"
                 android:maxLines="1"
                 android:textColor="@android:color/white"
-                android:textSize="16sp"
-                android:textStyle="bold" />
+                android:textSize="15sp" />
 
             <ImageButton
                 android:id="@+id/player_lock"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="@dimen/touch_target"
+                android:layout_height="@dimen/touch_target"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/player_lock"
                 android:src="@android:drawable/ic_lock_lock"
@@ -65,8 +67,8 @@
 
             <ImageButton
                 android:id="@+id/player_more"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="@dimen/touch_target"
+                android:layout_height="@dimen/touch_target"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/player_more"
                 android:src="@drawable/ic_more_vert_black_48dp"
@@ -87,8 +89,8 @@
 
             <ImageButton
                 android:id="@+id/player_previous"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="@dimen/player_side_button_size"
+                android:layout_height="@dimen/player_side_button_size"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/player_previous"
                 android:src="@android:drawable/ic_media_previous"
@@ -96,8 +98,8 @@
 
             <ImageButton
                 android:id="@+id/player_rewind"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="@dimen/player_side_button_size"
+                android:layout_height="@dimen/player_side_button_size"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/player_rewind"
                 android:src="@android:drawable/ic_media_rew"
@@ -105,17 +107,20 @@
 
             <ImageButton
                 android:id="@+id/player_play"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
-                android:background="@drawable/player_panel_background"
+                android:layout_width="@dimen/player_center_button_size"
+                android:layout_height="@dimen/player_center_button_size"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:background="@drawable/player_play_button_background"
                 android:contentDescription="@string/player_play_pause"
+                android:padding="14dp"
                 android:src="@android:drawable/ic_media_play"
                 android:tint="@android:color/white" />
 
             <ImageButton
                 android:id="@+id/player_forward"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="@dimen/player_side_button_size"
+                android:layout_height="@dimen/player_side_button_size"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/player_forward"
                 android:src="@android:drawable/ic_media_ff"
@@ -123,8 +128,8 @@
 
             <ImageButton
                 android:id="@+id/player_next"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="@dimen/player_side_button_size"
+                android:layout_height="@dimen/player_side_button_size"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/player_next"
                 android:src="@android:drawable/ic_media_next"
@@ -140,12 +145,13 @@
             android:id="@+id/player_bottom_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#B3131320"
+            android:background="@drawable/player_scrim_bottom"
             android:gravity="center_vertical"
             android:orientation="vertical"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
-            android:paddingBottom="10dp">
+            android:paddingTop="16dp"
+            android:paddingBottom="8dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -156,8 +162,9 @@
                     android:id="@+id/player_position"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:minWidth="40dp"
                     android:text="00:00"
-                    android:textColor="@android:color/white"
+                    android:textColor="@color/player_secondary_text"
                     android:textSize="12sp" />
 
                 <SeekBar
@@ -165,47 +172,75 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:progressTint="#BB86FC"
-                    android:thumbTint="#BB86FC" />
+                    android:minHeight="@dimen/player_seek_height"
+                    android:progressBackgroundTint="@color/player_seek_track"
+                    android:progressTint="@android:color/white"
+                    android:thumbTint="@android:color/white" />
 
                 <TextView
                     android:id="@+id/player_duration"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:minWidth="40dp"
+                    android:gravity="end"
                     android:text="00:00"
-                    android:textColor="@android:color/white"
+                    android:textColor="@color/player_secondary_text"
                     android:textSize="12sp" />
             </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
                 <Button
                     android:id="@+id/player_audio"
                     android:layout_width="wrap_content"
-                    android:layout_height="44dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:layout_height="@dimen/player_chip_height"
+                    android:background="@drawable/player_chip_background"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:stateListAnimator="@null"
                     android:text="@string/player_audio"
-                    android:textColor="@android:color/white" />
+                    android:textAllCaps="false"
+                    android:textColor="@android:color/white"
+                    android:textSize="13sp" />
 
                 <Button
                     android:id="@+id/player_subtitle"
                     android:layout_width="wrap_content"
-                    android:layout_height="44dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:layout_height="@dimen/player_chip_height"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/player_chip_background"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:stateListAnimator="@null"
                     android:text="@string/player_subtitle"
-                    android:textColor="@android:color/white" />
+                    android:textAllCaps="false"
+                    android:textColor="@android:color/white"
+                    android:textSize="13sp" />
 
                 <Button
                     android:id="@+id/player_speed"
                     android:layout_width="wrap_content"
-                    android:layout_height="44dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:layout_height="@dimen/player_chip_height"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/player_chip_background"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:stateListAnimator="@null"
                     android:text="1x"
-                    android:textColor="@android:color/white" />
+                    android:textAllCaps="false"
+                    android:textColor="@android:color/white"
+                    android:textSize="13sp" />
 
                 <Space
                     android:layout_width="0dp"
@@ -215,15 +250,23 @@
                 <Button
                     android:id="@+id/player_aspect"
                     android:layout_width="wrap_content"
-                    android:layout_height="44dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:layout_height="@dimen/player_chip_height"
+                    android:background="@drawable/player_chip_background"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:stateListAnimator="@null"
                     android:text="@string/player_fit"
-                    android:textColor="@android:color/white" />
+                    android:textAllCaps="false"
+                    android:textColor="@android:color/white"
+                    android:textSize="13sp" />
 
                 <ImageButton
                     android:id="@+id/player_fullscreen"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="@dimen/touch_target"
+                    android:layout_height="@dimen/touch_target"
+                    android:layout_marginStart="8dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/player_fullscreen"
                     android:src="@android:drawable/ic_menu_crop"
@@ -238,9 +281,9 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:background="@drawable/player_panel_background"
-        android:paddingStart="20dp"
+        android:paddingStart="24dp"
         android:paddingTop="12dp"
-        android:paddingEnd="20dp"
+        android:paddingEnd="24dp"
         android:paddingBottom="12dp"
         android:textColor="@android:color/white"
         android:textSize="18sp"
@@ -250,10 +293,17 @@
     <Button
         android:id="@+id/player_unlock"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_height="@dimen/player_chip_height"
         android:layout_gravity="center"
-        android:background="@drawable/player_panel_background"
+        android:background="@drawable/player_chip_background"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:stateListAnimator="@null"
         android:text="@string/player_unlock"
+        android:textAllCaps="false"
         android:textColor="@android:color/white"
+        android:textSize="13sp"
         android:visibility="gone" />
 </FrameLayout>

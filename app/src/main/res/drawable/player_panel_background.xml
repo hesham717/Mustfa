@@ -1,6 +1,6 @@
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#D9151320" />
-    <corners android:radius="18dp" />
+    <solid android:color="@color/player_panel" />
+    <corners android:radius="@dimen/corner_radius_large" />
     <padding
         android:left="8dp"
         android:top="6dp"

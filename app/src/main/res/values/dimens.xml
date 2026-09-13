@@ -17,8 +17,8 @@
     <dimen name="fab_height">56dp</dimen>
     <dimen name="minimal_row_height">100dp</dimen>
     <dimen name="minimal_row_size">72dp</dimen>
-    <dimen name="minimal_icon_size">40dp</dimen>
-    <dimen name="minimal_icon_parent_width">56dp</dimen>
+    <dimen name="minimal_icon_size">44dp</dimen>
+    <dimen name="minimal_icon_parent_width">60dp</dimen>
     <dimen name="tick_icon_size">20dp</dimen>
     <dimen name="check_icon_size_grid">40dp</dimen>
     <dimen name="check_icon_padding">4dp</dimen>
@@ -41,8 +41,8 @@
 
     <dimen name="spacebetweenitems_properties_dialog">10dp</dimen>
 
-    <dimen name="list_header_height">48dp</dimen>
-    <dimen name="list_header_textsize">16sp</dimen>
+    <dimen name="list_header_height">44dp</dimen>
+    <dimen name="list_header_textsize">13sp</dimen>
 
     <!-- Copy value from material-dialogs library -->
     <dimen name="md_dialog_frame_margin">24dp</dimen>
@@ -51,5 +51,31 @@
     <dimen name="md_content_padding_top">8dp</dimen>
 
     <dimen name="dialogPreferredPadding">24dp</dimen>
+
+    <!-- Shared metrics for the UX/UI polish pass. Keep these in sync with the
+         layouts so spacing stays consistent across screens. -->
+    <dimen name="corner_radius_small">8dp</dimen>
+    <dimen name="corner_radius_medium">12dp</dimen>
+    <dimen name="corner_radius_large">20dp</dimen>
+    <dimen name="corner_radius_pill">24dp</dimen>
+    <dimen name="touch_target">48dp</dimen>
+    <dimen name="icon_button_padding">12dp</dimen>
+
+    <!-- App bar / breadcrumb bar -->
+    <dimen name="appbar_bar_height">48dp</dimen>
+    <dimen name="appbar_inset_start">16dp</dimen>
+    <dimen name="appbar_inset_end">16dp</dimen>
+    <dimen name="appbar_path_textsize">15sp</dimen>
+    <dimen name="appbar_path_secondary_textsize">12sp</dimen>
+
+    <!-- Empty state -->
+    <dimen name="empty_state_icon_size">48dp</dimen>
+
+    <!-- Video player -->
+    <dimen name="player_top_bar_height">56dp</dimen>
+    <dimen name="player_center_button_size">72dp</dimen>
+    <dimen name="player_side_button_size">52dp</dimen>
+    <dimen name="player_chip_height">36dp</dimen>
+    <dimen name="player_seek_height">32dp</dimen>
 
 </resources>
