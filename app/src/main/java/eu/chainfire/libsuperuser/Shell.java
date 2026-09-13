@@ -26,9 +26,16 @@ public final class Shell {
   public static final class Builder {
     private boolean useSu;
     private Handler handler;
+    private String shell = "sh";
 
     public Builder useSU() {
       useSu = true;
+      return this;
+    }
+
+    /** Selects the shell binary used for non-root commands (e.g. "/bin/false" in tests). */
+    public Builder setShell(String shellBinary) {
+      if (shellBinary != null && !shellBinary.isEmpty()) shell = shellBinary;
       return this;
     }
 
@@ -38,18 +45,20 @@ public final class Shell {
     }
 
     public Interactive open() {
-      return new Interactive(useSu, handler);
+      return new Interactive(useSu, handler, shell);
     }
   }
 
   public static final class Interactive {
     private final boolean useSu;
     private final Handler handler;
+    private final String shell;
     private boolean running = true;
 
-    private Interactive(boolean root, Handler commandHandler) {
+    private Interactive(boolean root, Handler commandHandler, String shellBinary) {
       useSu = root;
       handler = commandHandler;
+      shell = shellBinary;
     }
 
     public boolean isRunning() {
@@ -57,13 +66,13 @@ public final class Shell {
     }
 
     public void addCommand(String command) {
-      execute(command, useSu);
+      execute(command, useSu, shell);
     }
 
     public void addCommand(String command, int commandCode, OnCommandResultListener listener) {
       Runnable task =
           () -> {
-            ArrayList<String> output = new ArrayList<>(execute(command, useSu));
+            ArrayList<String> output = new ArrayList<>(execute(command, useSu, shell));
             if (listener != null) listener.onCommandResult(commandCode, 0, output);
           };
       task.run();
@@ -77,20 +86,26 @@ public final class Shell {
   }
 
   private static List<String> execute(String command, boolean root) {
+    return execute(command, root, "sh");
+  }
+
+  private static List<String> execute(String command, boolean root, String shell) {
     ArrayList<String> output = new ArrayList<>();
     Process process = null;
     try {
       process =
           root
               ? new ProcessBuilder("su", "-c", command).start()
-              : new ProcessBuilder("sh", "-c", command).start();
+              : new ProcessBuilder(shell, "-c", command).start();
       try (BufferedReader reader =
           new BufferedReader(new InputStreamReader(process.getInputStream()))) {
         String line;
         while ((line = reader.readLine()) != null) output.add(line);
       }
       process.waitFor();
-    } catch (IOException | InterruptedException exception) {
+    } catch (IOException exception) {
+      // Shell/su binary missing or not executable: return what we have, do not poison the thread.
+    } catch (InterruptedException exception) {
       Thread.currentThread().interrupt();
     } finally {
       if (process != null) process.destroy();
