@@ -50,7 +50,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         tools:replace="android:label"
         android:largeHeap="true"
-        android:hardwareAccelerated="false"
+        android:hardwareAccelerated="true"
         android:label="@string/appbar_name"
         android:banner="@drawable/about_header"
         android:requestLegacyExternalStorage="true">
@@ -159,6 +159,12 @@
             </intent-filter>
 
         </activity>
+
+        <activity
+            android:name="com.droidtechlab.filemanager.ui.activities.VideoPlayerActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:screenOrientation="unspecified"
+            android:theme="@style/appCompatBlack" />
 
         <activity android:name="com.droidtechlab.filemanager.ui.activities.AboutActivity"
             android:theme="@style/aboutLight"

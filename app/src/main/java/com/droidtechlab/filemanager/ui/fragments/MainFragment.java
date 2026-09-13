@@ -58,9 +58,11 @@ import com.droidtechlab.filemanager.filesystem.files.FileUtils;
 import com.droidtechlab.filemanager.filesystem.smbstreamer.Streamer;
 import com.droidtechlab.filemanager.filesystem.ssh.SshClientUtils;
 import com.droidtechlab.filemanager.ui.activities.MainActivity;
+import com.droidtechlab.filemanager.ui.activities.VideoPlayerActivity;
 import com.droidtechlab.filemanager.ui.activities.superclasses.ThemedActivity;
 import com.droidtechlab.filemanager.ui.dialogs.GeneralDialogCreation;
 import com.droidtechlab.filemanager.ui.icons.MimeTypes;
+import com.droidtechlab.filemanager.ui.icons.Icons;
 import com.droidtechlab.filemanager.ui.provider.UtilitiesProvider;
 import com.droidtechlab.filemanager.ui.theme.AppTheme;
 import com.droidtechlab.filemanager.ui.views.DividerItemDecoration;
@@ -933,7 +935,13 @@ public class MainFragment extends Fragment implements BottomBarButtonPath {
                 CloudUtil.launchCloud(e.generateBaseFile(), openMode, getMainActivity());
                 break;
               default:
-                FileUtils.openFile(new File(e.desc), (MainActivity) getActivity(), sharedPref);
+                if ((e.getMode() == OpenMode.FILE || e.getMode() == OpenMode.ROOT)
+                    && e.filetype == Icons.VIDEO) {
+                  VideoPlayerActivity.open(
+                      getActivity(), new File(e.desc), getVisibleVideoPaths());
+                } else {
+                  FileUtils.openFile(new File(e.desc), (MainActivity) getActivity(), sharedPref);
+                }
                 break;
             }
 
@@ -942,6 +950,20 @@ public class MainFragment extends Fragment implements BottomBarButtonPath {
         }
       }
     }
+  }
+
+  private ArrayList<String> getVisibleVideoPaths() {
+    ArrayList<String> paths = new ArrayList<>();
+    if (LIST_ELEMENTS == null) return paths;
+    for (LayoutElementParcelable element : LIST_ELEMENTS) {
+      if (element != null
+          && !element.isDirectory
+          && element.filetype == Icons.VIDEO
+          && (element.getMode() == OpenMode.FILE || element.getMode() == OpenMode.ROOT)) {
+        paths.add(element.desc);
+      }
+    }
+    return paths;
   }
 
   public void updateTabWithDb(Tab tab) {

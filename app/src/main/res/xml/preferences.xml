@@ -104,6 +104,17 @@
             android:defaultValue="true"
             android:key="enableMarqueeFilename"
             android:title="@string/enable_marquee_filename"/>
+        <ListPreference
+            android:defaultValue="10"
+            android:entries="@array/video_seek_seconds_entries"
+            android:entryValues="@array/video_seek_seconds_values"
+            android:key="video_seek_seconds"
+            android:summary="@string/video_seek_seconds_summary"
+            android:title="@string/video_seek_seconds_title" />
+        <com.droidtechlab.filemanager.ui.views.preference.CheckBox
+            android:defaultValue="true"
+            android:key="video_auto_next"
+            android:title="@string/video_auto_next" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/archive_preferences">

@@ -52,6 +52,8 @@ public class PreferencesConstants {
   public static final String PREFERENCE_CHANGEPATHS = "typeablepaths";
   public static final String PREFERENCE_GRID_COLUMNS = "columns";
   public static final String PREFERENCE_SHOW_THUMB = "showThumbs";
+  public static final String PREFERENCE_VIDEO_SEEK_SECONDS = "video_seek_seconds";
+  public static final String PREFERENCE_VIDEO_AUTO_NEXT = "video_auto_next";
 
   public static final String PREFERENCE_CRYPT_MASTER_PASSWORD = "crypt_password";
   public static final String PREFERENCE_CRYPT_FINGERPRINT = "crypt_fingerprint";

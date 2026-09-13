@@ -618,7 +618,17 @@ public class RecyclerAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
         // setting icons for various cases
         // apkIcon holder refers to square/non-circular drawable
         // pictureIcon is circular drawable
-        switch (rowItem.filetype) {
+        if (rowItem.isDirectory
+            && getBoolean(PREFERENCE_SHOW_THUMB)
+            && rowItem.iconData.type == IconDataParcelable.IMAGE_FROMFILE) {
+          if (getBoolean(PREFERENCE_USE_CIRCULAR_IMAGES)) {
+            showThumbnailWithBackground(
+                holder, rowItem.iconData, holder.pictureIcon, rowItem.iconData::setImageBroken);
+          } else {
+            showThumbnailWithBackground(
+                holder, rowItem.iconData, holder.apkIcon, rowItem.iconData::setImageBroken);
+          }
+        } else switch (rowItem.filetype) {
           case Icons.IMAGE:
           case Icons.VIDEO:
             if (getBoolean(PREFERENCE_SHOW_THUMB)) {
@@ -755,7 +765,12 @@ public class RecyclerAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
 
         ((RoundedImageView) holder.genericIcon).setRelativeSize(1.25f, 1.25f);
 
-        if (rowItem.filetype == Icons.IMAGE || rowItem.filetype == Icons.VIDEO) {
+        if (rowItem.isDirectory
+            && getBoolean(PREFERENCE_SHOW_THUMB)
+            && rowItem.iconData.type == IconDataParcelable.IMAGE_FROMFILE) {
+          showRoundedThumbnail(
+              holder, rowItem.iconData, holder.imageView1, rowItem.iconData::setImageBroken);
+        } else if (rowItem.filetype == Icons.IMAGE || rowItem.filetype == Icons.VIDEO) {
           if (getBoolean(PREFERENCE_SHOW_THUMB)) {
             holder.imageView1.setVisibility(View.VISIBLE);
             holder.imageView1.setImageDrawable(null);

@@ -41,6 +41,7 @@ import com.droidtechlab.filemanager.filesystem.cloud.CloudUtil;
 import com.droidtechlab.filemanager.filesystem.compressed.CompressedHelper;
 import com.droidtechlab.filemanager.ui.activities.DatabaseViewerActivity;
 import com.droidtechlab.filemanager.ui.activities.MainActivity;
+import com.droidtechlab.filemanager.ui.activities.VideoPlayerActivity;
 import com.droidtechlab.filemanager.ui.activities.superclasses.PermissionsActivity;
 import com.droidtechlab.filemanager.ui.dialogs.GeneralDialogCreation;
 import com.droidtechlab.filemanager.ui.dialogs.share.ShareTask;
@@ -597,6 +598,8 @@ public class FileUtils {
       Intent intent = new Intent(m, DatabaseViewerActivity.class);
       intent.putExtra("path", f.getPath());
       m.startActivity(intent);
+    } else if (Icons.getTypeOfFile(f.getPath(), f.isDirectory()) == Icons.VIDEO) {
+      VideoPlayerActivity.open(m, f);
     } else if (Icons.getTypeOfFile(f.getPath(), f.isDirectory()) == Icons.AUDIO) {
       final int studio_count = sharedPreferences.getInt("studio", 0);
       Uri uri = Uri.fromFile(f);

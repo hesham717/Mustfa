@@ -20,6 +20,7 @@
 
 package com.droidtechlab.filemanager.adapters.glide;
 
+import java.io.File;
 import java.util.Collections;
 import java.util.List;
 
@@ -27,7 +28,9 @@ import com.droidtechlab.filemanager.adapters.data.IconDataParcelable;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.ListPreloader;
 import com.bumptech.glide.RequestBuilder;
+import com.bumptech.glide.load.Key;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.bumptech.glide.signature.ObjectKey;
 
 import android.graphics.drawable.Drawable;
 
@@ -61,7 +64,10 @@ public class RecyclerPreloadModelProvider
   public RequestBuilder<Drawable> getPreloadRequestBuilder(IconDataParcelable iconData) {
     RequestBuilder<Drawable> requestBuilder;
     if (iconData.type == IconDataParcelable.IMAGE_FROMFILE) {
-      requestBuilder = request.load(iconData.path);
+      File imageFile = new File(iconData.path);
+      Key signature = new ObjectKey(iconData.path + imageFile.lastModified() + imageFile.length());
+      requestBuilder =
+          request.load(imageFile).diskCacheStrategy(DiskCacheStrategy.AUTOMATIC).signature(signature);
     } else if (iconData.type == IconDataParcelable.IMAGE_FROMCLOUD) {
       requestBuilder = request.load(iconData.path).diskCacheStrategy(DiskCacheStrategy.NONE);
     } else {

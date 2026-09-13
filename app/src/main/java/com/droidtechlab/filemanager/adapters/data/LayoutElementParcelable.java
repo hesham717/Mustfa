@@ -24,6 +24,7 @@ import java.io.File;
 import java.util.Calendar;
 
 import com.droidtechlab.filemanager.filesystem.HybridFileParcelable;
+import com.droidtechlab.filemanager.filesystem.files.FolderCoverResolver;
 import com.droidtechlab.filemanager.ui.icons.Icons;
 import com.droidtechlab.filemanager.utils.OpenMode;
 import com.droidtechlab.filemanager.utils.Utils;
@@ -147,6 +148,10 @@ public class LayoutElementParcelable implements Parcelable {
     filetype = Icons.getTypeOfFile(path, isDirectory);
     @DrawableRes int fallbackIcon = Icons.loadMimeIcon(path, isDirectory);
     this.mode = openMode;
+    File folderCover = null;
+    if (useThumbs && isDirectory && (openMode == OpenMode.FILE || openMode == OpenMode.ROOT)) {
+      folderCover = FolderCoverResolver.resolve(new File(path));
+    }
     if (useThumbs) {
       switch (mode) {
         case SMB:
@@ -164,7 +169,11 @@ public class LayoutElementParcelable implements Parcelable {
           }
           break;
         default:
-          if (filetype == Icons.IMAGE || filetype == Icons.VIDEO || filetype == Icons.APK) {
+          if (folderCover != null) {
+            this.iconData =
+                new IconDataParcelable(
+                    IconDataParcelable.IMAGE_FROMFILE, folderCover.getPath(), fallbackIcon);
+          } else if (filetype == Icons.IMAGE || filetype == Icons.VIDEO || filetype == Icons.APK) {
             this.iconData =
                 new IconDataParcelable(IconDataParcelable.IMAGE_FROMFILE, path, fallbackIcon);
           } else {
