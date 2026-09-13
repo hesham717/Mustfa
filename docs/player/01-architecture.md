@@ -168,7 +168,7 @@ public interface PlayerListener {
 | الطابور والتكرار | `MediaQueue` + `RepeatMode` (OFF/ALL/ONE) |
 | A-B | `AbRepeatController` + `tick()` داخل `updateProgress()` + تنفيذ عند `STATE_ENDED` |
 | السرعة | `SpeedController` (قوالب إضافية على الفئة العليا) |
-| خطوة الإطار | `player.stepForward()` للأمام، و`FrameStepPlanner.stepBackward()` للخلف |
+| خطوة الإطار | بحث إلى حد الإطار في الاتجاهين عبر `FrameStepPlanner` (لا `stepForward()`؛ غير موجود في الواجهة العامة لـ ExoPlayer 2.18)، ومعدل الإطار يُقرأ بـ`MediaMetadataRetriever` |
 | الاستئناف | `ResumePolicy.decide()` مرتين: قبل التحضير (بلا مدة) وبعد `READY` (بالمدة الحقيقية) |
 | HLS/DASH/DRM | `createMediaSourceForUri()` يختار المحلّل حسب الامتداد، وWidevine عبر `MediaItem.DrmConfiguration` |
 | القياسات | `PlaybackMetrics` + `InMemoryTelemetrySink` + ملخّص `Log.i(TAG, "qoe …")` عند التدمير |
@@ -186,3 +186,8 @@ public interface PlayerListener {
 4. **التخزين المؤقت الحسابي فقط.** `CacheIndex` يحاسب البايتات؛ ربطه بـ`SimpleCache` على القرص
    لم يتم بعد.
 5. **DRM غير مُختبَر على جهاز حقيقي.** المسار مُرمَّز لكنه يحتاج ترخيصًا فعليًا للتحقق.
+6. **الإطارات الساقطة غير موصولة.** `PlaybackMetrics.onFrames` منفَّذ ومُختبَر، لكن
+   `onDroppedVideoFrames` ليس من دوال `Player.Listener` في النسخة المحلولة هنا؛ التوصيل يحتاج
+   `AnalyticsListener` (المرحلة 1).
+7. **معدل الإطار يُقرأ من الحاوية لا من المحرك.** `MediaMetadataRetriever` ينجح على الملفات
+   المحلية، لا على تدفقات HLS/DASH؛ خطوة الإطار تُعلن «غير متاحة» في تلك الحالة.

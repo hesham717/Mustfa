@@ -54,7 +54,7 @@
 | TTFF | `VideoPlayerActivity.onRenderedFirstFrame` → `metrics.onFirstFrame` |
 | التقطيع | `onPlaybackStateChanged(STATE_BUFFERING/STATE_READY)` |
 | كمون القفز | `pendingSeekAtMs` في `seekBy`/`applyGesture` → `metrics.onSeek` |
-| الإطارات الساقطة | `onDroppedVideoFrames` |
+| الإطارات الساقطة | **غير موصول بعد** — يحتاج `AnalyticsListener.onDroppedVideoFrames` (المرحلة 1)؛ `metrics.onFrames` جاهز ومُختبَر |
 | زمن المشاهدة | `updateProgress` → `metrics.onPosition` (يتجاهل القفزات للخلف) |
 | الأخطاء | `handlePlaybackError` + `mapErrorCode` |
 | الملخّص | `onDestroy` → `Log.i(TAG, "qoe " + metrics.snapshot())` |
