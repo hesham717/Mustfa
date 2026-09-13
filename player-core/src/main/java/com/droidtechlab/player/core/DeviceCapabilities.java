@@ -43,12 +43,22 @@ public final class DeviceCapabilities {
       Set<CodecId> softwareCodecs,
       boolean secureDecoderSupported,
       boolean hardwareHdrSupported) {
-    this.hardwareCodecs =
-        hardwareCodecs == null ? EnumSet.noneOf(CodecId.class) : EnumSet.copyOf(hardwareCodecs);
-    this.softwareCodecs =
-        softwareCodecs == null ? EnumSet.noneOf(CodecId.class) : EnumSet.copyOf(softwareCodecs);
+    this.hardwareCodecs = copyOf(hardwareCodecs);
+    this.softwareCodecs = copyOf(softwareCodecs);
     this.secureDecoderSupported = secureDecoderSupported;
     this.hardwareHdrSupported = hardwareHdrSupported;
+  }
+
+  /**
+   * Defensive copy that tolerates {@code null} and empty input; {@link EnumSet#copyOf} rejects empty
+   * collections, and "this device supports nothing" is a legitimate input.
+   */
+  private static EnumSet<CodecId> copyOf(Set<CodecId> source) {
+    EnumSet<CodecId> copy = EnumSet.noneOf(CodecId.class);
+    if (source != null) {
+      copy.addAll(source);
+    }
+    return copy;
   }
 
   /** A conservative baseline: hardware H.264/HEVC/VP9 plus a bundled software decoder. */

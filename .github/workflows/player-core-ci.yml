@@ -4,11 +4,17 @@ name: Player core CI
 # The player core module has no Android dependency, so its tests run on the JVM;
 # the app build is kept in the same job because it is what proves the Android
 # glue code around the core still compiles.
+#
+# Because raw run logs are not always reachable, the outcome (errors, failing
+# tests) is also published as a comment on the head commit.
 on:
   push:
     branches: ['**']
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   player:
@@ -39,10 +45,51 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Run player core unit tests
-        run: ./gradlew --no-daemon -PskipGoogleServices :player-core:test --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon -PskipGoogleServices :player-core:test --stacktrace 2>&1 | tee /tmp/player-test.log
 
       - name: Compile the app against the player core
-        run: ./gradlew --no-daemon -PskipGoogleServices :app:assembleFdroidDebug --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon -PskipGoogleServices :app:assembleFdroidDebug --stacktrace 2>&1 | tee /tmp/app-build.log
+
+      - name: Publish result summary on the commit
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Player core CI — ${GITHUB_SHA:0:7} — job ${{ job.status }}"
+            echo
+            echo '#### Gradle errors / failures'
+            echo '```'
+            grep -aE "error:|FAILED|What went wrong|Execution failed|Caused by:|Could not |tests completed|BUILD SUCCESSFUL|BUILD FAILED|> Task .* FAILED" \
+              /tmp/player-test.log /tmp/app-build.log 2>/dev/null | tail -n 100 || echo "(no matching lines)"
+            echo '```'
+            echo
+            echo '#### Failed test cases'
+            echo '```'
+            if ls player-core/build/test-results/test/*.xml >/dev/null 2>&1; then
+              grep -aoE '<testcase name="[^"]*" classname="[^"]*"[^>]*>\s*<(failure|error)[^>]*' \
+                player-core/build/test-results/test/*.xml | head -n 40 || echo "(none)"
+              echo
+              grep -aoE 'tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"' \
+                player-core/build/test-results/test/*.xml | sed 's/.*://' | \
+                awk -F'"' '{t+=$2; s+=$4; f+=$6; e+=$8} END {print "totals: tests="t" skipped="s" failures="f" errors="e}'
+            else
+              echo "(no test results produced)"
+            fi
+            echo '```'
+            echo
+            echo '#### Tail of the player-core log'
+            echo '```'
+            tail -n 40 /tmp/player-test.log 2>/dev/null || echo "(missing)"
+            echo '```'
+          } > /tmp/body.md
+          head -c 60000 /tmp/body.md > /tmp/body-trim.md
+          gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+            -F body=@/tmp/body-trim.md >/dev/null && echo "summary published"
 
       - name: Upload player core test report
         uses: actions/upload-artifact@v4
