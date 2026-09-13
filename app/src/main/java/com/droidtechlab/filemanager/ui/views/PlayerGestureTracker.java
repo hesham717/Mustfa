@@ -21,7 +21,7 @@
 package com.droidtechlab.filemanager.ui.views;
 
 /**
- * Pure state machine that turns raw pointer coordinates into stable player gestures.
+ * Pure state machine that turns raw pointer coordinates into stable, predictable player gestures.
  *
  * <p>It is intentionally free of Android dependencies so it can be unit tested. The rules are:
  *
