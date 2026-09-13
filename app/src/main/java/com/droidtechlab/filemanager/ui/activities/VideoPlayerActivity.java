@@ -1266,15 +1266,14 @@ public class VideoPlayerActivity extends ThemedActivity {
         }
 
         @Override
-        public void onDroppedVideoFrames(int droppedFrames, long elapsedMs) {
-          metrics.onFrames(0L, droppedFrames);
-        }
-
-        @Override
         public void onPlayerError(PlaybackException error) {
           handlePlaybackError(error);
         }
       };
+
+  // NOTE: dropped frame counting needs an AnalyticsListener (onDroppedVideoFrames is not part of
+  // Player.Listener in ExoPlayer 2.18 as resolved here). PlaybackMetrics.onFrames is implemented and
+  // unit tested; wiring the listener is scheduled in phase 1 (docs/player/06-roadmap-and-rollout.md).
 
   /** Called the first time the current media is parsed and the duration is known. */
   private void onMediaReady() {
