@@ -3,7 +3,7 @@ name: Arena APK release
 on:
   push:
     branches:
-      - arena/01a098dc-mustfa
+      - arena/01a0990a-mustfa
     # Only rebuild when the app itself changes, so documentation or workflow
     # edits do not publish an identical APK again.
     paths:
@@ -50,33 +50,33 @@ jobs:
           set -e
           APK_PATH=$(find app/build/outputs/apk -name "*.apk" | head -1)
           echo "found $APK_PATH"
-          cp "$APK_PATH" Mustfa-ui-polish-debug.apk
-          ls -lh Mustfa-ui-polish-debug.apk
-          sha256sum Mustfa-ui-polish-debug.apk | tee apk-sha256.txt
+          cp "$APK_PATH" Mustfa-gesture-fix-debug.apk
+          ls -lh Mustfa-gesture-fix-debug.apk
+          sha256sum Mustfa-gesture-fix-debug.apk | tee apk-sha256.txt
           echo "sha256=$(cut -d' ' -f1 apk-sha256.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Publish release with APK
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ui-polish-${{ github.run_number }}
+          TAG: gesture-fix-${{ github.run_number }}
           SHA256: ${{ steps.apk.outputs.sha256 }}
         run: |
           set -e
           NOTES=$(cat <<EOF
-          Debug APK built from commit ${GITHUB_SHA} on branch \`arena/01a098dc-mustfa\`.
+          Debug APK built from commit ${GITHUB_SHA} on branch \`arena/01a0990a-mustfa\`.
 
           * Flavour: **fdroid debug** (no Google services), app id \`com.droidtechlab.filemanager.debug\`
             so it installs next to any existing install.
-          * Contents: UX/UI polish pass only (layouts, drawables, values) - the file manager and
-            video player behaviour is unchanged.
+          * Contents: video player gesture handling fix (touch slop, axis lock, diagonal rejection,
+            lower seek/volume/brightness sensitivity, no conflict with seek bar/buttons).
           * SHA-256 of the APK: \`${SHA256}\`
 
           This is a test build, not an official release.
           EOF
           )
-          gh release create "$TAG" Mustfa-ui-polish-debug.apk \
+          gh release create "$TAG" Mustfa-gesture-fix-debug.apk \
             --target "$GITHUB_SHA" \
-            --title "UI polish test build ($TAG)" \
+            --title "Gesture fix test build ($TAG)" \
             --notes "$NOTES" \
             --prerelease
           gh release view "$TAG" --json assets --jq '.assets[].name'
