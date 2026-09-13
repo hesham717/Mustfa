@@ -27,7 +27,8 @@ public class PlaybackStateMachineTest {
     machine.transitionTo(PlaybackState.PLAYING);
     machine.transitionTo(PlaybackState.ENDED);
     machine.transitionTo(PlaybackState.IDLE);
-    assertEquals(6, machine.transitionCount());
+    // PREPARING, READY, PLAYING, PAUSED, PLAYING, ENDED, IDLE
+    assertEquals(7, machine.transitionCount());
   }
 
   @Test

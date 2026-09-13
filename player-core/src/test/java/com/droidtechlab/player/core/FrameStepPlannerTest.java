@@ -23,12 +23,14 @@ public class FrameStepPlannerTest {
   }
 
   @Test
-  public void unsupportedFrameRatesAreReported() {
+  public void unsupportedFrameRatesLeaveThePositionUntouched() {
     FrameStepPlanner planner = new FrameStepPlanner(0d);
     assertFalse(planner.isSupported());
     assertEquals(0L, planner.frameDurationUs());
+    // Without a frame rate there is no frame to step to, so the position must not move.
     assertEquals(5_000L, planner.stepForward(5_000L, -1L));
-    assertEquals(0L, planner.stepBackward(5_000L));
+    assertEquals(5_000L, planner.stepBackward(5_000L));
+    assertEquals(0L, new FrameStepPlanner(-1d).stepBackward(-500L));
   }
 
   @Test

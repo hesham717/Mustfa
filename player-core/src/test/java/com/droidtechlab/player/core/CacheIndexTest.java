@@ -27,8 +27,9 @@ public class CacheIndexTest {
     CacheIndex index = new CacheIndex(10 * MB);
     index.touch("a", 4 * MB);
     index.touch("b", 4 * MB);
-    // Reading "a" promotes it, so "b" is the eviction candidate.
-    assertTrue(index.contains("a"));
+    // Reading "a" promotes it, so "b" becomes the eviction candidate. Only an actual read
+    // promotes: contains() is a lookup, not an access.
+    assertEquals(4 * MB, index.sizeOf("a"));
 
     List<String> evicted = index.touch("c", 4 * MB);
     assertEquals(1, evicted.size());
@@ -36,6 +37,16 @@ public class CacheIndexTest {
     assertTrue(index.contains("a"));
     assertTrue(index.contains("c"));
     assertEquals(8 * MB, index.usedBytes());
+  }
+
+  @Test
+  public void withoutAReadTheOldestEntryIsEvicted() {
+    CacheIndex index = new CacheIndex(10 * MB);
+    index.touch("a", 4 * MB);
+    index.touch("b", 4 * MB);
+    List<String> evicted = index.touch("c", 4 * MB);
+    assertEquals("insertion order decides when nothing was read", "a", evicted.get(0));
+    assertTrue(index.contains("b"));
   }
 
   @Test

@@ -64,7 +64,7 @@ jobs:
             echo
             echo '#### Gradle errors / failures'
             echo '```'
-            grep -aE "error:|FAILED|What went wrong|Execution failed|Caused by:|Could not |tests completed|BUILD SUCCESSFUL|BUILD FAILED|> Task .* FAILED" \
+            grep -aE "error:|FAILED|AssertionError|expected:|ComparisonFailure|What went wrong|Execution failed|Caused by:|Could not |tests completed|BUILD SUCCESSFUL|BUILD FAILED|> Task .* FAILED" \
               /tmp/player-test.log /tmp/app-build.log 2>/dev/null | tail -n 100 || echo "(no matching lines)"
             echo '```'
             echo

@@ -103,13 +103,23 @@ public class MediaQueueTest {
   }
 
   @Test
-  public void disablingShuffleRestoresSequentialOrder() {
-    MediaQueue queue = MediaQueue.of(Arrays.asList("a", "b", "c", "d"), 0);
+  public void disablingShuffleKeepsTheCurrentItemAndRestoresSequentialOrder() {
+    java.util.List<String> items = Arrays.asList("a", "b", "c", "d");
+    MediaQueue queue = MediaQueue.of(items, 0);
     queue.setShuffleEnabled(true, 5L);
-    queue.next();
-    queue.setShuffleEnabled(false, 5L);
     assertEquals("a", queue.current());
-    assertEquals("b", queue.next());
+
+    String playingAfterAdvance = queue.next();
+    queue.setShuffleEnabled(false, 5L);
+    assertEquals("the item being played must survive a mode switch",
+        playingAfterAdvance, queue.current());
+
+    int index = items.indexOf(playingAfterAdvance);
+    if (index < items.size() - 1) {
+      assertEquals(items.get(index + 1), queue.next());
+    } else {
+      assertNull(queue.next());
+    }
   }
 
   @Test
