@@ -5,7 +5,7 @@ if (!project.hasProperty('skipGoogleServices')) {
 //apply plugin: 'jacoco-android'
 
 android {
-    compileSdkVersion 29
+    compileSdkVersion 31
 
     dexOptions {
         jumboMode = true
