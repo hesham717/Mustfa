@@ -70,6 +70,10 @@ public final class Shell {
     }
 
     public void waitForIdle() {}
+
+    public void close() {
+      running = false;
+    }
   }
 
   private static List<String> execute(String command, boolean root) {

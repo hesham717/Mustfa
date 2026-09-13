@@ -33,7 +33,8 @@ import com.droidtechlab.filemanager.ui.activities.superclasses.ThemedActivity;
 import com.droidtechlab.filemanager.ui.fragments.preference_fragments.PreferencesConstants;
 import com.droidtechlab.filemanager.ui.icons.Icons;
 import com.google.android.exoplayer2.C;
-import com.google.android.exoplayer2.ExoPlaybackException;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
@@ -156,7 +157,7 @@ public class VideoPlayerActivity extends ThemedActivity {
   }
 
   @Override
-  protected void onCreate(Bundle savedInstanceState) {
+  public void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     requestWindowFeature(Window.FEATURE_NO_TITLE);
     setContentView(R.layout.activity_video_player);
@@ -385,15 +386,16 @@ public class VideoPlayerActivity extends ThemedActivity {
     Uri videoUri = Uri.fromFile(file);
     MediaSource videoSource =
         new ProgressiveMediaSource.Factory(dataSourceFactory, new DefaultExtractorsFactory())
-            .createMediaSource(videoUri);
+        .createMediaSource(MediaItem.fromUri(videoUri));
     if (subtitleUri == null) return videoSource;
 
-    Format subtitleFormat =
-        Format.createTextSampleFormat(
-            null, subtitleMimeType(subtitleUri.toString()), null, Format.NO_VALUE, 0, null, null);
+    MediaItem.SubtitleConfiguration subtitleConfiguration =
+      new MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+        .setMimeType(subtitleMimeType(subtitleUri.toString()))
+        .build();
     MediaSource subtitleSource =
         new SingleSampleMediaSource.Factory(dataSourceFactory)
-            .createMediaSource(subtitleUri, subtitleFormat, C.TIME_UNSET);
+        .createMediaSource(subtitleConfiguration, C.TIME_UNSET);
     return new MergingMediaSource(videoSource, subtitleSource);
   }
 
@@ -769,7 +771,7 @@ public class VideoPlayerActivity extends ThemedActivity {
         }
 
         @Override
-        public void onPlayerError(ExoPlaybackException error) {
+        public void onPlayerError(PlaybackException error) {
           savePosition();
           showGestureMessage(getString(R.string.player_source_unavailable));
         }
