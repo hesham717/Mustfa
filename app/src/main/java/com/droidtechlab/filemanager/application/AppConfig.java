@@ -75,6 +75,7 @@ public class AppConfig extends GlideApplication {
   @Override
   public void onCreate() {
     super.onCreate();
+    CrashReporter.install(this);
     AppCompatDelegate.setCompatVectorFromResourcesEnabled(
         true); // selector in srcCompat isn't supported without this
     if (backgroundHandlerThread != null && backgroundHandlerThread.isAlive()) {
