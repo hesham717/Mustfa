@@ -249,11 +249,11 @@ public class VideoPlayerActivity extends ThemedActivity {
     DefaultRenderersFactory renderersFactory =
         new DefaultRenderersFactory(this).setExtensionRendererMode(tuning.extensionRendererMode());
 
+    // The renderers factory is a constructor argument of SimpleExoPlayer.Builder, not a setter.
     player =
-        new SimpleExoPlayer.Builder(this)
+        new SimpleExoPlayer.Builder(this, renderersFactory)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
-            .setRenderersFactory(renderersFactory)
             .build();
     player.setAudioAttributes(
         new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.CONTENT_TYPE_MOVIE).build(),
@@ -498,6 +498,7 @@ public class VideoPlayerActivity extends ThemedActivity {
     abRepeat.clear();
     resumeApplied = false;
     pendingSeekAtMs = -1L;
+    frameStepPlanner = null;
     metrics.onPrepareStarted(SystemClock.elapsedRealtime());
     transitionToState(PlaybackState.PREPARING);
 
@@ -925,24 +926,54 @@ public class VideoPlayerActivity extends ThemedActivity {
   }
 
   /**
-   * Single frame advance. Forward stepping is a decoder operation; backward stepping is a seek to the
-   * previous frame boundary, which is what a phone decoder can actually do.
+   * Reads the container frame rate with the platform retriever.
+   *
+   * <p>Deliberately not taken from an ExoPlayer callback: the frame rate is a property of the file,
+   * and {@link MediaMetadataRetriever} is a stable framework API across every supported release.
+   */
+  private FrameStepPlanner probeFrameRate() {
+    if (currentFile == null) return null;
+    MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+    try {
+      retriever.setDataSource(currentFile.getAbsolutePath());
+      String fps = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE);
+      if (fps == null) return null;
+      return new FrameStepPlanner(Double.parseDouble(fps));
+    } catch (RuntimeException | NumberFormatException unreadable) {
+      return null;
+    } finally {
+      retriever.release();
+    }
+  }
+
+  /**
+   * Single frame stepping.
+   *
+   * <p>Both directions are seeks onto frame boundaries computed by {@link FrameStepPlanner}. A seek
+   * is the honest implementation on a phone: a true decoder level step needs a flush plus a
+   * reference chain replay, which costs more than the frame it produces.
    */
   private void stepFrame(int direction) {
     if (player == null) return;
     if (player.isPlaying()) player.setPlayWhenReady(false);
+    if (frameStepPlanner == null) frameStepPlanner = probeFrameRate();
     if (frameStepPlanner == null || !frameStepPlanner.isSupported()) {
       Toast.makeText(this, R.string.player_step_unavailable, Toast.LENGTH_SHORT).show();
       return;
     }
-    if (direction > 0) {
-      player.stepForward();
-    } else {
-      long targetUs = frameStepPlanner.stepBackward(currentPositionMs() * 1000L);
-      pendingSeekAtMs = SystemClock.elapsedRealtime();
-      player.seekTo(targetUs / 1000L);
-    }
-    recordEvent("frame_step", "direction", direction > 0 ? "forward" : "backward", "fps",
+    long positionUs = currentPositionMs() * 1000L;
+    long durationUs = player.getDuration() > 0 ? player.getDuration() * 1000L : -1L;
+    long targetUs =
+        direction > 0
+            ? frameStepPlanner.stepForward(positionUs, durationUs)
+            : frameStepPlanner.stepBackward(positionUs);
+    pendingSeekAtMs = SystemClock.elapsedRealtime();
+    player.seekTo(targetUs / 1000L);
+    recordEvent(
+        "frame_step",
+        "direction",
+        direction > 0 ? "forward" : "backward",
+        "fps",
         String.valueOf(frameStepPlanner.framesPerSecond()));
   }
 
@@ -1240,13 +1271,6 @@ public class VideoPlayerActivity extends ThemedActivity {
         }
 
         @Override
-        public void onVideoSizeChanged(com.google.android.exoplayer2.video.VideoSize videoSize) {
-          if (videoSize != null && videoSize.frameRateHz > 0f) {
-            frameStepPlanner = new FrameStepPlanner(videoSize.frameRateHz);
-          }
-        }
-
-        @Override
         public void onPlayerError(PlaybackException error) {
           handlePlaybackError(error);
         }
@@ -1256,6 +1280,7 @@ public class VideoPlayerActivity extends ThemedActivity {
   private void onMediaReady() {
     long duration = player == null ? 0L : Math.max(0L, player.getDuration());
     if (gestureEngine != null) gestureEngine.setDurationMs(duration);
+    if (frameStepPlanner == null) frameStepPlanner = probeFrameRate();
     if (!resumeApplied) {
       resumeApplied = true;
       long saved = getSavedPosition(currentFile);

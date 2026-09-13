@@ -5,8 +5,9 @@ name: Player core CI
 # the app build is kept in the same job because it is what proves the Android
 # glue code around the core still compiles.
 #
-# Because raw run logs are not always reachable, the outcome (errors, failing
-# tests) is also published as a comment on the head commit.
+# Because raw run logs are not always reachable, the outcome (Gradle errors,
+# failing tests, resolved ExoPlayer API surface) is also published as a comment
+# on the head commit.
 on:
   push:
     branches: ['**']
@@ -54,6 +55,29 @@ jobs:
           set -o pipefail
           ./gradlew --no-daemon -PskipGoogleServices :app:assembleFdroidDebug --stacktrace 2>&1 | tee /tmp/app-build.log
 
+      - name: Dump the resolved ExoPlayer API surface
+        if: always()
+        run: |
+          set +e
+          {
+            echo "cached exoplayer modules:"
+            ls ~/.gradle/caches/modules-2/files-2.1/com.google.android.exoplayer/ 2>/dev/null
+            CORE=$(find ~/.gradle/caches/modules-2 -path "*exoplayer-core*" -name "*.aar" | head -1)
+            echo "core aar: $CORE"
+            mkdir -p /tmp/api
+            unzip -p "$CORE" classes.jar > /tmp/api/core.jar 2>/dev/null
+            unzip -o -q /tmp/api/core.jar -d /tmp/api/cls 2>/dev/null
+            echo "--- Player.Listener (video related) ---"
+            javap -classpath /tmp/api/cls 'com.google.android.exoplayer2.Player$Listener' 2>/dev/null | grep -iE "video|dropped|firstFrame"
+            echo "--- VideoSize ---"
+            javap -classpath /tmp/api/cls com.google.android.exoplayer2.video.VideoSize 2>/dev/null
+            echo "--- SimpleExoPlayer.Builder ---"
+            javap -classpath /tmp/api/cls 'com.google.android.exoplayer2.SimpleExoPlayer$Builder' 2>/dev/null
+            echo "--- ExoPlayer (step/seek) ---"
+            javap -classpath /tmp/api/cls com.google.android.exoplayer2.ExoPlayer 2>/dev/null | grep -iE "step|seek"
+          } > /tmp/api.log 2>&1
+          cat /tmp/api.log
+
       - name: Publish result summary on the commit
         if: always()
         env:
@@ -68,23 +92,20 @@ jobs:
               /tmp/player-test.log /tmp/app-build.log 2>/dev/null | tail -n 100 || echo "(no matching lines)"
             echo '```'
             echo
-            echo '#### Failed test cases'
+            echo '#### Test totals'
             echo '```'
             if ls player-core/build/test-results/test/*.xml >/dev/null 2>&1; then
-              grep -aoE '<testcase name="[^"]*" classname="[^"]*"[^>]*>\s*<(failure|error)[^>]*' \
-                player-core/build/test-results/test/*.xml | head -n 40 || echo "(none)"
-              echo
               grep -aoE 'tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"' \
                 player-core/build/test-results/test/*.xml | sed 's/.*://' | \
-                awk -F'"' '{t+=$2; s+=$4; f+=$6; e+=$8} END {print "totals: tests="t" skipped="s" failures="f" errors="e}'
+                awk -F'"' '{t+=$2; s+=$4; f+=$6; e+=$8} END {print "tests="t" skipped="s" failures="f" errors="e}'
             else
               echo "(no test results produced)"
             fi
             echo '```'
             echo
-            echo '#### Tail of the player-core log'
+            echo '#### Resolved ExoPlayer API surface'
             echo '```'
-            tail -n 40 /tmp/player-test.log 2>/dev/null || echo "(missing)"
+            head -n 70 /tmp/api.log 2>/dev/null || echo "(missing)"
             echo '```'
           } > /tmp/body.md
           head -c 60000 /tmp/body.md > /tmp/body-trim.md
