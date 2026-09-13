@@ -44,6 +44,14 @@ jobs:
       - name: Unit tests (player gestures)
         run: ./gradlew --no-daemon -PskipGoogleServices :app:testFdroidDebugUnitTest --tests '*PlayerGestureTrackerTest*' --tests '*DependencyPinsTest*' --stacktrace
 
+      - name: Upload unit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report-${{ github.run_number }}
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+
       - name: Build fdroid debug + release APKs
         run: ./gradlew --no-daemon -PskipGoogleServices :app:assembleFdroidDebug :app:assembleFdroidRelease --stacktrace
 

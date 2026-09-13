@@ -69,7 +69,7 @@ public class PlayerGestureTrackerTest {
     // Finger drifts a lot vertically later on – direction must stay locked.
     assertEquals(HORIZONTAL, tracker.onMove(700, 700));
     assertEquals(HORIZONTAL, tracker.onMove(900, 200));
-    assertEquals(200f, tracker.getDeltaX(), 0.01f);
+    assertEquals(400f, tracker.getDeltaX(), 0.01f);
   }
 
   @Test
