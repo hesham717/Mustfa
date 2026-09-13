@@ -1,0 +1,19 @@
+// Player core: platform neutral playback logic (state machine, queue, gestures, tuning,
+// decoder policy, cache accounting, QoE metrics). No Android or iOS dependency on purpose:
+// the same rules are shared by both platforms and everything here is unit tested on the JVM.
+apply plugin: 'java-library'
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
+
+test {
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        exceptionFormat 'full'
+        showStandardStreams = false
+    }
+}

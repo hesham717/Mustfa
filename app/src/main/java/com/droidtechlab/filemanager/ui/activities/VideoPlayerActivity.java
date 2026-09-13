@@ -32,6 +32,24 @@ import com.droidtechlab.filemanager.R;
 import com.droidtechlab.filemanager.ui.activities.superclasses.ThemedActivity;
 import com.droidtechlab.filemanager.ui.fragments.preference_fragments.PreferencesConstants;
 import com.droidtechlab.filemanager.ui.icons.Icons;
+import com.droidtechlab.player.core.AbRepeatController;
+import com.droidtechlab.player.core.DeviceTier;
+import com.droidtechlab.player.core.FrameStepPlanner;
+import com.droidtechlab.player.core.GestureEngine;
+import com.droidtechlab.player.core.GestureResult;
+import com.droidtechlab.player.core.GestureType;
+import com.droidtechlab.player.core.InMemoryTelemetrySink;
+import com.droidtechlab.player.core.MediaQueue;
+import com.droidtechlab.player.core.PlaybackEvent;
+import com.droidtechlab.player.core.PlaybackMetrics;
+import com.droidtechlab.player.core.PlaybackState;
+import com.droidtechlab.player.core.PlaybackStateMachine;
+import com.droidtechlab.player.core.PlaybackTuning;
+import com.droidtechlab.player.core.PlayerErrorCode;
+import com.droidtechlab.player.core.RepeatMode;
+import com.droidtechlab.player.core.ResumePolicy;
+import com.droidtechlab.player.core.SpeedController;
+import com.droidtechlab.player.core.SubtitleStyle;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
@@ -44,6 +62,8 @@ import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.MergingMediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.SingleSampleMediaSource;
+import com.google.android.exoplayer2.source.dash.DashMediaSource;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.trackselection.MappingTrackSelector;
 import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
@@ -51,11 +71,16 @@ import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import com.google.android.exoplayer2.ui.PlayerView;
+import com.google.android.exoplayer2.text.CaptionStyleCompat;
 import com.google.android.exoplayer2.util.MimeTypes;
 import com.google.android.exoplayer2.util.Util;
+import com.google.android.exoplayer2.DefaultLoadControl;
+import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
 
+import android.app.ActivityManager;
 import android.app.AlertDialog;
+import android.app.PictureInPictureParams;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -65,9 +90,13 @@ import android.graphics.Color;
 import android.media.AudioManager;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.SystemClock;
 import android.provider.Settings;
+import android.util.Log;
+import android.util.Rational;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
@@ -93,11 +122,17 @@ public class VideoPlayerActivity extends ThemedActivity {
   private static final long CONTROLS_TIMEOUT_MS = 3200L;
   private static final long OVERLAY_TIMEOUT_MS = 900L;
   private static final String POSITION_PREFIX = "video_position_";
+  private static final String TAG = "VideoPlayer";
 
   private final Handler handler = new Handler();
   private final ArrayList<File> videoFiles = new ArrayList<>();
-  private final String[] speedValues = {"0.5x", "0.75x", "1x", "1.25x", "1.5x", "2x"};
-  private final float[] speedNumbers = {0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f};
+
+  /** Platform neutral playback logic; see the {@code player-core} module and docs/player/. */
+  private final PlaybackStateMachine stateMachine = new PlaybackStateMachine();
+  private final AbRepeatController abRepeat = new AbRepeatController();
+  private final SpeedController speedController = new SpeedController();
+  private final PlaybackMetrics metrics = new PlaybackMetrics();
+  private final InMemoryTelemetrySink telemetry = new InMemoryTelemetrySink();
 
   private PlayerView playerView;
   private SimpleExoPlayer player;
@@ -110,12 +145,13 @@ public class VideoPlayerActivity extends ThemedActivity {
   private Button speedButton, aspectButton;
   private AudioManager audioManager;
   private GestureDetector gestureDetector;
+  private GestureEngine gestureEngine;
   private Runnable hideControlsRunnable;
   private Runnable hideOverlayRunnable;
   private Uri selectedSubtitleUri;
   private File currentFile;
+  private MediaQueue queue;
   private int currentIndex;
-  private long gestureStartPosition;
   private boolean seekingByGesture;
   private boolean controlsLocked;
   private boolean fullscreen;
@@ -124,6 +160,17 @@ public class VideoPlayerActivity extends ThemedActivity {
   private boolean userSeeking;
   private float initialBrightness;
   private int aspectMode;
+
+  /** Derived from the device class: buffers, cache, resolution ceiling, decoder preference. */
+  private PlaybackTuning tuning;
+  private SubtitleStyle subtitleStyle = SubtitleStyle.defaults();
+  private FrameStepPlanner frameStepPlanner;
+
+  private long pendingSeekAtMs = -1L;
+  private long lastReportedPositionMs;
+  private boolean resumeApplied;
+  /** Single instance so the polling loop can be cancelled instead of stacking up. */
+  private final Runnable progressRunnable = this::updateProgress;
 
   private final BroadcastReceiver storageReceiver =
       new BroadcastReceiver() {
@@ -179,19 +226,84 @@ public class VideoPlayerActivity extends ThemedActivity {
     buildVideoQueue();
     currentIndex = videoFiles.indexOf(currentFile);
     if (currentIndex < 0) currentIndex = 0;
+    queue = MediaQueue.of(videoPaths(), currentIndex);
+    tuning = PlaybackTuning.forTier(currentDeviceTier());
+
     dataSourceFactory =
         new DefaultDataSourceFactory(this, Util.getUserAgent(this, getString(R.string.app_name)));
     trackSelector = new DefaultTrackSelector(this);
-    player = new SimpleExoPlayer.Builder(this).setTrackSelector(trackSelector).build();
+    // Honour the resolution ceiling for this device class: picking a 4K rendition on a 720p-class
+    // device only buys dropped frames and battery drain.
+    trackSelector.setParameters(
+        trackSelector
+            .buildUponParameters()
+            .setMaxVideoSize(tuning.maxVideoWidth(), tuning.maxVideoHeight()));
+    DefaultLoadControl loadControl =
+        new DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                tuning.minBufferMs(),
+                tuning.maxBufferMs(),
+                tuning.bufferForPlaybackMs(),
+                tuning.bufferForPlaybackAfterRebufferMs())
+            .build();
+    DefaultRenderersFactory renderersFactory =
+        new DefaultRenderersFactory(this).setExtensionRendererMode(tuning.extensionRendererMode());
+
+    player =
+        new SimpleExoPlayer.Builder(this)
+            .setTrackSelector(trackSelector)
+            .setLoadControl(loadControl)
+            .setRenderersFactory(renderersFactory)
+            .build();
     player.setAudioAttributes(
         new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.CONTENT_TYPE_MOVIE).build(),
         true);
+    player.setWakeMode(C.WAKE_MODE_LOCAL);
+    // Headset unplug must pause instead of blasting audio from the speaker.
+    player.setHandleAudioBecomingNoisy(true);
     playerView.setPlayer(player);
     player.addListener(playerListener);
 
     configureGestures();
     prepareCurrentVideo(true);
     registerStorageReceiver();
+    recordEvent(
+        "player_open",
+        "tier",
+        tuning.tier().name(),
+        "max_video",
+        tuning.maxVideoWidth() + "x" + tuning.maxVideoHeight());
+  }
+
+  /** Device class used to pick the tuning profile. */
+  private DeviceTier currentDeviceTier() {
+    ActivityManager activityManager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+    long totalRamMb = 0L;
+    if (activityManager != null) {
+      ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+      activityManager.getMemoryInfo(memoryInfo);
+      totalRamMb = memoryInfo.totalMem / (1024L * 1024L);
+    }
+    return DeviceTier.classify(
+        Runtime.getRuntime().availableProcessors(), totalRamMb, Build.VERSION.SDK_INT);
+  }
+
+  /** Media ids for the queue: the same list the list UI built, in playback order. */
+  private java.util.List<String> videoPaths() {
+    java.util.List<String> paths = new ArrayList<>(videoFiles.size());
+    for (File file : videoFiles) {
+      paths.add(file.getAbsolutePath());
+    }
+    return paths;
+  }
+
+  /** Appends a QoE event with up to two key/value pairs. */
+  private void recordEvent(String name, String key1, String value1, String key2, String value2) {
+    java.util.Map<String, String> attributes = new java.util.LinkedHashMap<>();
+    if (key1 != null) attributes.put(key1, value1);
+    if (key2 != null) attributes.put(key2, value2);
+    attributes.put("media", currentFile == null ? "unknown" : currentFile.getName());
+    telemetry.record(new PlaybackEvent(name, SystemClock.elapsedRealtime(), attributes));
   }
 
   private void bindViews() {
@@ -263,86 +375,61 @@ public class VideoPlayerActivity extends ThemedActivity {
   }
 
   private void configureGestures() {
+    gestureEngine = newGestureEngine();
+    // The viewport is only known after layout, and it changes on rotation and in PiP.
+    playerView.addOnLayoutChangeListener(
+        (view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->
+            gestureEngine = newGestureEngine());
+
     gestureDetector =
         new GestureDetector(
             this,
             new GestureDetector.SimpleOnGestureListener() {
-              private float startX;
-              private float startY;
-              private boolean horizontal;
-              private boolean decided;
-
               @Override
               public boolean onDown(MotionEvent event) {
-                startX = event.getX();
-                startY = event.getY();
-                horizontal = false;
-                decided = false;
-                gestureStartPosition = player == null ? 0 : player.getCurrentPosition();
+                applyGesture(
+                    gestureEngine.onDown(event.getX(), event.getY(), currentPositionMs()));
                 return true;
               }
 
               @Override
               public boolean onSingleTapConfirmed(MotionEvent event) {
-                if (!controlsLocked) toggleControls();
+                applyGesture(gestureEngine.onSingleTap());
                 return true;
               }
 
               @Override
               public boolean onDoubleTap(MotionEvent event) {
-                if (controlsLocked) return true;
-                if (event.getX() < playerView.getWidth() * 0.34f) {
-                  seekBy(-getSeekStepSeconds() * 1000L);
-                } else if (event.getX() > playerView.getWidth() * 0.66f) {
-                  seekBy(getSeekStepSeconds() * 1000L);
-                } else {
-                  togglePlayback();
-                }
+                applyGesture(gestureEngine.onDoubleTap(event.getX(), event.getY()));
                 return true;
               }
 
               @Override
               public boolean onScroll(
                   MotionEvent first, MotionEvent current, float distanceX, float distanceY) {
-                if (controlsLocked) return true;
-                float totalX = current.getX() - startX;
-                float totalY = current.getY() - startY;
-                if (!decided && (Math.abs(totalX) > 18 || Math.abs(totalY) > 18)) {
-                  decided = true;
-                  horizontal = Math.abs(totalX) >= Math.abs(totalY);
-                  if (horizontal) seekingByGesture = true;
-                }
-                if (!decided) return true;
-
-                if (horizontal && player != null && player.getDuration() > 0) {
-                  long offset =
-                      (long) (totalX / Math.max(1, playerView.getWidth()) * player.getDuration());
-                  long target = Math.max(0, Math.min(player.getDuration(), gestureStartPosition + offset));
-                  player.seekTo(target);
-                  showGestureMessage((offset >= 0 ? "+" : "") + formatTime(offset) + "  " + formatTime(target));
-                } else {
-                  boolean left = startX < playerView.getWidth() / 2f;
-                  if (left) {
-                    changeBrightness(-totalY / playerView.getHeight());
-                  } else {
-                    changeVolume(-totalY / playerView.getHeight());
-                  }
-                }
+                applyGesture(gestureEngine.onMove(current.getX(), current.getY()));
                 return true;
               }
 
               @Override
               public boolean onFling(
                   MotionEvent first, MotionEvent current, float velocityX, float velocityY) {
+                gestureEngine.onUp();
                 seekingByGesture = false;
                 return true;
               }
             });
     playerView.setOnTouchListener(
         (view, event) -> {
-          if (controlsLocked && event.getAction() == MotionEvent.ACTION_UP) return true;
+          int action = event.getActionMasked();
+          if (controlsLocked && action == MotionEvent.ACTION_UP) {
+            gestureEngine.onUp();
+            seekingByGesture = false;
+            return true;
+          }
           gestureDetector.onTouchEvent(event);
-          if (event.getAction() == MotionEvent.ACTION_UP) {
+          if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            gestureEngine.onUp();
             seekingByGesture = false;
             scheduleHideControls();
           }
@@ -350,23 +437,87 @@ public class VideoPlayerActivity extends ThemedActivity {
         });
   }
 
+  /** Rebuilds the gesture engine for the current viewport, keeping lock state and duration. */
+  private GestureEngine newGestureEngine() {
+    int width = playerView == null ? 0 : playerView.getWidth();
+    int height = playerView == null ? 0 : playerView.getHeight();
+    if (width <= 0 || height <= 0) {
+      android.graphics.Point size = new android.graphics.Point();
+      getWindowManager().getDefaultDisplay().getSize(size);
+      width = size.x;
+      height = size.y;
+    }
+    GestureEngine engine = new GestureEngine(width, height);
+    engine.setDurationMs(player == null ? 0L : Math.max(0L, player.getDuration()));
+    engine.setLocked(controlsLocked);
+    return engine;
+  }
+
+  /** Applies an intent produced by {@link GestureEngine}. */
+  private void applyGesture(GestureResult result) {
+    if (result == null || result.type() == GestureType.NONE) return;
+    switch (result.type()) {
+      case TOGGLE_CONTROLS:
+        toggleControls();
+        break;
+      case PLAY_PAUSE:
+        togglePlayback();
+        break;
+      case SEEK_BACKWARD:
+      case SEEK_FORWARD:
+        seekBy(result.seekDeltaMs());
+        break;
+      case SEEK_PREVIEW:
+        seekingByGesture = true;
+        if (player != null) {
+          pendingSeekAtMs = SystemClock.elapsedRealtime();
+          player.seekTo(result.seekTargetMs());
+        }
+        showGestureMessage(
+            formatDelta(result.seekDeltaMs()) + "  " + formatTime(result.seekTargetMs()));
+        break;
+      case BRIGHTNESS:
+        changeBrightness(result.delta());
+        break;
+      case VOLUME:
+        changeVolume(result.delta());
+        break;
+      default:
+        break;
+    }
+  }
+
+  private long currentPositionMs() {
+    return player == null ? 0L : Math.max(0L, player.getCurrentPosition());
+  }
+
   private void prepareCurrentVideo(boolean offerResume) {
     if (player == null || currentFile == null || !currentFile.exists()) return;
     titleView.setText(currentFile.getName());
     selectedSubtitleUri = findSubtitle(currentFile);
-    long position = getSavedPosition(currentFile);
+    abRepeat.clear();
+    resumeApplied = false;
+    pendingSeekAtMs = -1L;
+    metrics.onPrepareStarted(SystemClock.elapsedRealtime());
+    transitionToState(PlaybackState.PREPARING);
+
+    long savedPosition = getSavedPosition(currentFile);
+    // Duration is not known before the media is parsed, so the tail rules are applied later,
+    // when the first READY state arrives (see onMediaReady).
+    ResumePolicy.Decision decision = ResumePolicy.decide(savedPosition, 0L);
     MediaSource source = createMediaSource(currentFile, selectedSubtitleUri);
     player.setMediaSource(source);
     player.prepare();
-    player.setPlayWhenReady(!(offerResume && position > 5000));
-    if (offerResume && position > 5000) {
+    player.setPlayWhenReady(!(offerResume && decision.isResume()));
+    if (offerResume && decision.isResume()) {
       new AlertDialog.Builder(this)
           .setTitle(R.string.player_continue_title)
-          .setMessage(getString(R.string.player_continue_message, formatTime(position)))
+          .setMessage(
+              getString(R.string.player_continue_message, formatTime(decision.positionMs())))
           .setPositiveButton(
               R.string.player_continue,
               (dialog, which) -> {
-                player.seekTo(position);
+                player.seekTo(decision.positionMs());
                 player.setPlayWhenReady(true);
               })
           .setNegativeButton(
@@ -376,17 +527,65 @@ public class VideoPlayerActivity extends ThemedActivity {
                 player.setPlayWhenReady(true);
               })
           .show();
-    } else if (position > 0) {
-      player.seekTo(position);
+    } else if (decision.isResume()) {
+      player.seekTo(decision.positionMs());
     }
     scheduleHideControls();
   }
 
+  /**
+   * Moves the shared state machine, recovering through IDLE when the engine reports a transition the
+   * machine does not model. Losing playback is worse than an extra transition, but it is reported so
+   * the divergence shows up in telemetry.
+   */
+  private void transitionToState(PlaybackState target) {
+    try {
+      stateMachine.transitionTo(target);
+    } catch (IllegalStateException rejected) {
+      recordEvent(
+          "state_transition_rejected",
+          "from",
+          stateMachine.current().name(),
+          "to",
+          target.name());
+      try {
+        stateMachine.transitionTo(PlaybackState.IDLE);
+        stateMachine.transitionTo(target);
+      } catch (IllegalStateException ignored) {
+        // The engine keeps playing; the state machine is only a mirror of it.
+      }
+    }
+  }
+
   private MediaSource createMediaSource(File file, @Nullable Uri subtitleUri) {
-    Uri videoUri = Uri.fromFile(file);
-    MediaSource videoSource =
-        new ProgressiveMediaSource.Factory(dataSourceFactory, new DefaultExtractorsFactory())
-        .createMediaSource(MediaItem.fromUri(videoUri));
+    return createMediaSourceForUri(Uri.fromFile(file), subtitleUri);
+  }
+
+  /**
+   * Selects the demuxer from the container: HLS for {@code .m3u8}, DASH for {@code .mpd}, progressive
+   * otherwise. Widevine is configured through the {@link MediaItem}, which is the supported route in
+   * ExoPlayer 2.18 and keeps the secure output path intact. See docs/player/03-media-and-drm.md.
+   */
+  private MediaSource createMediaSourceForUri(Uri videoUri, @Nullable Uri subtitleUri) {
+    MediaItem.Builder itemBuilder = new MediaItem.Builder().setUri(videoUri);
+    String licenseUrl = videoUri.getQueryParameter("license_url");
+    if (licenseUrl != null && !licenseUrl.isEmpty()) {
+      itemBuilder.setDrmConfiguration(
+          new MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID).setLicenseUri(licenseUrl).build());
+    }
+    MediaItem mediaItem = itemBuilder.build();
+
+    String path = videoUri.getPath() == null ? "" : videoUri.getPath().toLowerCase(Locale.ROOT);
+    MediaSource videoSource;
+    if (path.endsWith(".m3u8")) {
+      videoSource = new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+    } else if (path.endsWith(".mpd")) {
+      videoSource = new DashMediaSource.Factory(dataSourceFactory).createMediaSource(mediaItem);
+    } else {
+      videoSource =
+          new ProgressiveMediaSource.Factory(dataSourceFactory, new DefaultExtractorsFactory())
+              .createMediaSource(mediaItem);
+    }
     if (subtitleUri == null) return videoSource;
 
     MediaItem.SubtitleConfiguration subtitleConfiguration =
@@ -452,11 +651,17 @@ public class VideoPlayerActivity extends ThemedActivity {
   }
 
   private void playNeighbour(int direction) {
-    int next = currentIndex + direction;
-    if (next < 0 || next >= videoFiles.size()) return;
+    if (queue == null) return;
+    String next = direction >= 0 ? queue.next() : queue.previous();
+    if (next == null) {
+      showGestureMessage(getString(R.string.player_queue_end));
+      return;
+    }
     savePosition();
-    currentIndex = next;
+    currentIndex = queue.currentIndex();
     currentFile = videoFiles.get(currentIndex);
+    recordEvent("queue_advance", "direction", direction >= 0 ? "next" : "previous", "size",
+        String.valueOf(queue.size()));
     prepareCurrentVideo(false);
   }
 
@@ -470,9 +675,11 @@ public class VideoPlayerActivity extends ThemedActivity {
 
   private void seekBy(long amount) {
     if (player == null || player.getDuration() <= 0) return;
-    long target = Math.max(0, Math.min(player.getDuration(), player.getCurrentPosition() + amount));
+    long from = player.getCurrentPosition();
+    long target = Math.max(0, Math.min(player.getDuration(), from + amount));
+    pendingSeekAtMs = SystemClock.elapsedRealtime();
     player.seekTo(target);
-    showGestureMessage((amount > 0 ? "+" : "-") + getSeekStepSeconds() + "s");
+    showGestureMessage(formatDelta(target - from));
   }
 
   private void changeVolume(float delta) {
@@ -493,15 +700,30 @@ public class VideoPlayerActivity extends ThemedActivity {
   }
 
   private void showSpeedMenu() {
+    float[] presets = SpeedController.availablePresets(tuning != null && tuning.allowExtendedSpeeds());
+    String[] labels = new String[presets.length];
+    for (int i = 0; i < presets.length; i++) {
+      labels[i] = SpeedController.label(presets[i]);
+    }
     new AlertDialog.Builder(this)
         .setTitle(R.string.player_speed)
         .setItems(
-            speedValues,
+            labels,
             (dialog, which) -> {
-              player.setPlaybackParameters(new PlaybackParameters(speedNumbers[which]));
-              speedButton.setText(speedValues[which]);
+              speedController.set(presets[which]);
+              applyPlaybackSpeed();
             })
         .show();
+  }
+
+  private void applyPlaybackSpeed() {
+    if (player == null) return;
+    player.setPlaybackParameters(
+        new PlaybackParameters(
+            speedController.current(), speedController.isPitchCorrectionEnabled() ? 1f : 0f));
+    speedButton.setText(speedController.label());
+    recordEvent("speed_changed", "speed", speedController.label(), "pitch_correction",
+        String.valueOf(speedController.isPitchCorrectionEnabled()));
   }
 
   private void showAspectMenu() {
@@ -575,34 +797,213 @@ public class VideoPlayerActivity extends ThemedActivity {
   }
 
   private void showSubtitleSizeMenu() {
-    String[] sizes = {"Small", "Medium", "Large"};
+    String[] sizes = {
+      getString(R.string.player_subtitle_small),
+      getString(R.string.player_subtitle_medium),
+      getString(R.string.player_subtitle_large),
+      getString(R.string.player_subtitle_huge)
+    };
     new AlertDialog.Builder(this)
         .setTitle(R.string.player_subtitle_size)
         .setItems(
             sizes,
             (dialog, which) -> {
-              if (playerView.getSubtitleView() != null) {
-                playerView.getSubtitleView().setFractionalTextSize(0.045f + which * 0.018f);
-              }
+              subtitleStyle = SubtitleStyle.builder().stepSize(which).build();
+              applySubtitleStyle();
             })
         .show();
+  }
+
+  /** Maps the shared {@link SubtitleStyle} model onto the ExoPlayer subtitle view. */
+  private void applySubtitleStyle() {
+    if (playerView == null || playerView.getSubtitleView() == null) return;
+    playerView.getSubtitleView().setFractionalTextSize(subtitleStyle.textFraction());
+    playerView
+        .getSubtitleView()
+        .setStyle(
+            new CaptionStyleCompat(
+                subtitleStyle.textColorArgb(),
+                (int) (subtitleStyle.backgroundAlpha() * 255f),
+                subtitleStyle.backgroundColorArgb(),
+                captionEdgeType(),
+                Color.TRANSPARENT,
+                null));
+    recordEvent(
+        "subtitle_style",
+        "size",
+        String.valueOf(subtitleStyle.textFraction()),
+        "edge",
+        subtitleStyle.edgeType().name());
+  }
+
+  private int captionEdgeType() {
+    switch (subtitleStyle.edgeType()) {
+      case OUTLINE:
+        return CaptionStyleCompat.EDGE_TYPE_OUTLINE;
+      case DROP_SHADOW:
+        return CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW;
+      case NONE:
+      default:
+        return CaptionStyleCompat.EDGE_TYPE_NONE;
+    }
   }
 
   private void showMoreMenu() {
     String[] items = {
       getString(R.string.player_video_info),
+      getString(R.string.player_playback_stats),
+      abRepeat.isActive()
+          ? getString(R.string.player_ab_repeat_off)
+          : getString(R.string.player_ab_repeat),
+      getString(R.string.player_step_backward),
+      getString(R.string.player_step_forward),
+      getString(R.string.player_repeat_mode)
+          + ": "
+          + (queue == null ? RepeatMode.OFF.name() : queue.repeatMode().name()),
+      getString(R.string.player_pip),
       getString(R.string.player_auto_next),
-      orientationLocked ? "Unlock orientation" : "Lock orientation"
+      orientationLocked
+          ? getString(R.string.player_orientation_unlock)
+          : getString(R.string.player_orientation_lock)
     };
     new AlertDialog.Builder(this)
         .setItems(
             items,
             (dialog, which) -> {
-              if (which == 0) showVideoInfo();
-              else if (which == 1) autoNext = !autoNext;
-              else toggleOrientationLock();
+              switch (which) {
+                case 0:
+                  showVideoInfo();
+                  break;
+                case 1:
+                  showPlaybackStats();
+                  break;
+                case 2:
+                  toggleAbRepeat();
+                  break;
+                case 3:
+                  stepFrame(-1);
+                  break;
+                case 4:
+                  stepFrame(1);
+                  break;
+                case 5:
+                  cycleRepeatMode();
+                  break;
+                case 6:
+                  enterPip();
+                  break;
+                case 7:
+                  autoNext = !autoNext;
+                  break;
+                default:
+                  toggleOrientationLock();
+                  break;
+              }
             })
         .show();
+  }
+
+  /** A-B loop: first press marks A, second marks B, third clears. */
+  private void toggleAbRepeat() {
+    long position = currentPositionMs();
+    if (abRepeat.isActive()) {
+      abRepeat.clear();
+      showGestureMessage(getString(R.string.player_ab_repeat_off));
+    } else if (abRepeat.pointAMs() < 0) {
+      abRepeat.setPointA(position);
+      showGestureMessage(getString(R.string.player_ab_repeat_set_a));
+    } else {
+      abRepeat.setPointB(position);
+      showGestureMessage(getString(R.string.player_ab_repeat_active));
+    }
+    recordEvent(
+        "ab_repeat",
+        "state",
+        abRepeat.isActive() ? "active" : "marking",
+        "position",
+        String.valueOf(position));
+  }
+
+  /**
+   * Single frame advance. Forward stepping is a decoder operation; backward stepping is a seek to the
+   * previous frame boundary, which is what a phone decoder can actually do.
+   */
+  private void stepFrame(int direction) {
+    if (player == null) return;
+    if (player.isPlaying()) player.setPlayWhenReady(false);
+    if (frameStepPlanner == null || !frameStepPlanner.isSupported()) {
+      Toast.makeText(this, R.string.player_step_unavailable, Toast.LENGTH_SHORT).show();
+      return;
+    }
+    if (direction > 0) {
+      player.stepForward();
+    } else {
+      long targetUs = frameStepPlanner.stepBackward(currentPositionMs() * 1000L);
+      pendingSeekAtMs = SystemClock.elapsedRealtime();
+      player.seekTo(targetUs / 1000L);
+    }
+    recordEvent("frame_step", "direction", direction > 0 ? "forward" : "backward", "fps",
+        String.valueOf(frameStepPlanner.framesPerSecond()));
+  }
+
+  private void cycleRepeatMode() {
+    if (queue == null) return;
+    queue.setRepeatMode(queue.repeatMode().next());
+    showGestureMessage(getString(R.string.player_repeat_mode) + ": " + queue.repeatMode().name());
+    recordEvent("repeat_mode", "mode", queue.repeatMode().name(), null, null);
+  }
+
+  /** Picture in picture, guarded because it needs API 26 and a device that declares support. */
+  private void enterPip() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      Toast.makeText(this, R.string.player_pip_unavailable, Toast.LENGTH_SHORT).show();
+      return;
+    }
+    try {
+      int width = 16;
+      int height = 9;
+      if (player != null && player.getVideoSize().width > 0 && player.getVideoSize().height > 0) {
+        width = player.getVideoSize().width;
+        height = player.getVideoSize().height;
+      }
+      PictureInPictureParams params =
+          new PictureInPictureParams.Builder().setAspectRatio(new Rational(width, height)).build();
+      enterPictureInPictureMode(params);
+      recordEvent("pip_enter", "aspect", width + ":" + height, null, null);
+    } catch (IllegalStateException unavailable) {
+      Toast.makeText(this, R.string.player_pip_unavailable, Toast.LENGTH_SHORT).show();
+    }
+  }
+
+  private void showPlaybackStats() {
+    PlaybackMetrics.Snapshot snapshot = metrics.snapshot();
+    String text =
+        "Device tier: "
+            + (tuning == null ? "?" : tuning.tier().name())
+            + "\nBuffer: "
+            + (tuning == null ? "?" : tuning.minBufferMs() + "-" + tuning.maxBufferMs() + " ms")
+            + "\nTime to first frame: "
+            + snapshot.timeToFirstFrameMs()
+            + " ms\nRebuffers: "
+            + snapshot.rebufferCount()
+            + " ("
+            + snapshot.rebufferDurationMs()
+            + " ms, "
+            + Math.round(snapshot.rebufferRatio() * 100f)
+            + "%)\nDropped frames: "
+            + snapshot.droppedFrames()
+            + " / "
+            + (snapshot.renderedFrames() + snapshot.droppedFrames())
+            + "\nSeeks: "
+            + snapshot.seekCount()
+            + " (avg "
+            + snapshot.seekLatencyMsAverage()
+            + " ms)\nAverage bit rate: "
+            + snapshot.averageBitrateKbps()
+            + " kbps\nErrors: "
+            + snapshot.errorCount()
+            + (snapshot.lastErrorCode() == null ? "" : " (last: " + snapshot.lastErrorCode() + ")");
+    new AlertDialog.Builder(this).setTitle(R.string.player_playback_stats).setMessage(text).show();
   }
 
   private void showVideoInfo() {
@@ -679,6 +1080,7 @@ public class VideoPlayerActivity extends ThemedActivity {
 
   private void setControlsLocked(boolean locked) {
     controlsLocked = locked;
+    if (gestureEngine != null) gestureEngine.setLocked(locked);
     controls.setVisibility(locked ? View.GONE : View.VISIBLE);
     findViewById(R.id.player_unlock).setVisibility(locked ? View.VISIBLE : View.GONE);
     if (!locked) scheduleHideControls();
@@ -710,7 +1112,25 @@ public class VideoPlayerActivity extends ThemedActivity {
     seekBar.setProgress((int) Math.min(Integer.MAX_VALUE, position));
     positionView.setText(formatTime(position));
     durationView.setText(formatTime(duration));
-    handler.postDelayed(this::updateProgress, 500);
+
+    metrics.onPosition(position);
+    if (pendingSeekAtMs >= 0 && position != lastReportedPositionMs) {
+      metrics.onSeek(SystemClock.elapsedRealtime() - pendingSeekAtMs);
+      pendingSeekAtMs = -1L;
+    }
+    lastReportedPositionMs = position;
+
+    Long loopTarget = abRepeat.tick(position);
+    if (loopTarget != null) player.seekTo(loopTarget);
+
+    // Cancel before rescheduling: updateProgress is also called from player callbacks, and without
+    // this every callback would start a second polling loop.
+    handler.removeCallbacks(progressRunnable);
+    handler.postDelayed(progressRunnable, 500);
+  }
+
+  private String formatDelta(long millis) {
+    return (millis < 0 ? "-" : "+") + formatTime(Math.abs(millis));
   }
 
   private void updatePlayButton() {
@@ -745,9 +1165,14 @@ public class VideoPlayerActivity extends ThemedActivity {
 
   private void savePosition() {
     if (player == null || currentFile == null) return;
+    long position = player.getCurrentPosition();
+    if (!ResumePolicy.shouldPersist(position)) {
+      // Do not write noise for a video the user barely started.
+      return;
+    }
     getPreferences(MODE_PRIVATE)
         .edit()
-        .putLong(POSITION_PREFIX + currentFile.getAbsolutePath(), player.getCurrentPosition())
+        .putLong(POSITION_PREFIX + currentFile.getAbsolutePath(), position)
         .apply();
   }
 
@@ -764,18 +1189,148 @@ public class VideoPlayerActivity extends ThemedActivity {
     private final Player.Listener playerListener =
       new Player.Listener() {
         @Override
-        public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
+        public void onPlaybackStateChanged(int playbackState) {
+          long elapsed = SystemClock.elapsedRealtime();
+          if (playbackState == Player.STATE_BUFFERING) {
+            metrics.onBufferingStarted(elapsed);
+            stateMachine.onBufferingStarted();
+          } else if (playbackState == Player.STATE_READY) {
+            metrics.onBufferingEnded(elapsed);
+            stateMachine.onBufferingEnded();
+            onMediaReady();
+          } else if (playbackState == Player.STATE_ENDED) {
+            metrics.onBufferingEnded(elapsed);
+            transitionToState(PlaybackState.ENDED);
+            recordEvent("playback_ended", "position", String.valueOf(currentPositionMs()), null,
+                null);
+            onCurrentItemEnded();
+          } else if (playbackState == Player.STATE_IDLE) {
+            metrics.onBufferingEnded(elapsed);
+            transitionToState(PlaybackState.IDLE);
+          }
           updatePlayButton();
           updateProgress();
-          if (playbackState == Player.STATE_ENDED && autoNext) playNeighbour(1);
+        }
+
+        @Override
+        public void onIsPlayingChanged(boolean isPlaying) {
+          if (isPlaying) {
+            transitionToState(PlaybackState.PLAYING);
+          } else if (stateMachine.current() == PlaybackState.PLAYING) {
+            transitionToState(PlaybackState.PAUSED);
+          }
+          updatePlayButton();
+        }
+
+        @Override
+        public void onRenderedFirstFrame() {
+          long elapsed = SystemClock.elapsedRealtime();
+          metrics.onFirstFrame(elapsed);
+          recordEvent(
+              "first_frame",
+              "ttff_ms",
+              String.valueOf(metrics.snapshot().timeToFirstFrameMs()),
+              "state",
+              stateMachine.current().name());
+        }
+
+        @Override
+        public void onDroppedVideoFrames(int droppedFrames, long elapsedMs) {
+          metrics.onFrames(0L, droppedFrames);
+        }
+
+        @Override
+        public void onVideoSizeChanged(com.google.android.exoplayer2.video.VideoSize videoSize) {
+          if (videoSize != null && videoSize.frameRateHz > 0f) {
+            frameStepPlanner = new FrameStepPlanner(videoSize.frameRateHz);
+          }
         }
 
         @Override
         public void onPlayerError(PlaybackException error) {
-          savePosition();
-          showGestureMessage(getString(R.string.player_source_unavailable));
+          handlePlaybackError(error);
         }
       };
+
+  /** Called the first time the current media is parsed and the duration is known. */
+  private void onMediaReady() {
+    long duration = player == null ? 0L : Math.max(0L, player.getDuration());
+    if (gestureEngine != null) gestureEngine.setDurationMs(duration);
+    if (!resumeApplied) {
+      resumeApplied = true;
+      long saved = getSavedPosition(currentFile);
+      ResumePolicy.Decision decision = ResumePolicy.decide(saved, duration);
+      if (!decision.isResume() && saved > ResumePolicy.RESUME_THRESHOLD_MS) {
+        // The user already watched this file: start over instead of resuming into the credits.
+        player.seekTo(0);
+      }
+    }
+    recordEvent("media_ready", "duration_ms", String.valueOf(duration), "tier",
+        tuning == null ? "unknown" : tuning.tier().name());
+  }
+
+  /** End of item: honour A-B loop, then repeat mode, then auto-next. */
+  private void onCurrentItemEnded() {
+    if (abRepeat.isActive()) {
+      player.seekTo(abRepeat.pointAMs());
+      player.setPlayWhenReady(true);
+      return;
+    }
+    if (queue != null && queue.shouldReplayCurrentOnEnd()) {
+      player.seekTo(0);
+      player.setPlayWhenReady(true);
+      return;
+    }
+    if (autoNext && queue != null && queue.hasNext()) {
+      playNeighbour(1);
+    }
+  }
+
+  /** Maps the engine error onto the shared taxonomy and retries once when that is safe. */
+  private void handlePlaybackError(PlaybackException error) {
+    PlayerErrorCode code = mapErrorCode(error);
+    savePosition();
+    metrics.onError(code.telemetryName());
+    transitionToState(PlaybackState.ERROR);
+    recordEvent("playback_error", "error_code", code.telemetryName(), "engine_code",
+        String.valueOf(error.errorCode));
+    Log.w(TAG, "playback error " + code + " (" + error.errorCode + ")", error);
+    telemetry.flush();
+    showGestureMessage(getString(R.string.player_error_generic));
+    if (code.retryAutomatically() && currentFile != null && currentFile.exists()) {
+      handler.postDelayed(() -> prepareCurrentVideo(false), 400L);
+    }
+  }
+
+  private static PlayerErrorCode mapErrorCode(PlaybackException error) {
+    switch (error.errorCode) {
+      case PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND:
+        return PlayerErrorCode.SOURCE_NOT_FOUND;
+      case PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED:
+      case PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT:
+        return PlayerErrorCode.NETWORK_TIMEOUT;
+      case PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED:
+      case PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED:
+        return PlayerErrorCode.SOURCE_UNSUPPORTED;
+      case PlaybackException.ERROR_CODE_DECODER_INIT_FAILED:
+      case PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED:
+        return PlayerErrorCode.DECODER_INIT_FAILED;
+      case PlaybackException.ERROR_CODE_DECODING_FAILED:
+      case PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED:
+      case PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES:
+        return PlayerErrorCode.DECODER_UNSUPPORTED;
+      case PlaybackException.ERROR_CODE_DRM_DEVICE_REVOKED:
+      case PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED:
+      case PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED:
+      case PlaybackException.ERROR_CODE_DRM_PROVISIONING_FAILED:
+      case PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR:
+        return PlayerErrorCode.DRM_LICENSE_FAILED;
+      case PlaybackException.ERROR_CODE_DRM_SCHEME_UNSUPPORTED:
+        return PlayerErrorCode.DRM_DEVICE_NOT_SECURE;
+      default:
+        return PlayerErrorCode.UNKNOWN;
+    }
+  }
 
   @Override
   protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
@@ -795,8 +1350,35 @@ public class VideoPlayerActivity extends ThemedActivity {
   @Override
   protected void onPause() {
     savePosition();
-    if (player != null) player.setPlayWhenReady(false);
+    if (!isInPip() && player != null) {
+      // In picture in picture the playback keeps running; pausing here would kill it.
+      player.setPlayWhenReady(false);
+    }
+    telemetry.flush();
     super.onPause();
+  }
+
+  @Override
+  public void onUserLeaveHint() {
+    // Leaving the app while playing drops into PiP instead of stopping, like a dedicated player.
+    if (player != null && player.isPlaying()) {
+      enterPip();
+    }
+    super.onUserLeaveHint();
+  }
+
+  @Override
+  public void onPictureInPictureModeChanged(boolean inPictureInPictureMode) {
+    super.onPictureInPictureModeChanged(inPictureInPictureMode);
+    setControlsVisible(!inPictureInPictureMode && !controlsLocked);
+    if (inPictureInPictureMode) {
+      gestureEngine = newGestureEngine();
+    }
+  }
+
+  private boolean isInPip() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
+    return isInPictureInPictureMode();
   }
 
   @Override
@@ -815,6 +1397,9 @@ public class VideoPlayerActivity extends ThemedActivity {
   protected void onDestroy() {
     savePosition();
     handler.removeCallbacksAndMessages(null);
+    telemetry.flush();
+    // QoE summary for this session; the CI performance harness reads these lines.
+    Log.i(TAG, "qoe " + metrics.snapshot());
     try {
       unregisterReceiver(storageReceiver);
     } catch (IllegalArgumentException ignored) {

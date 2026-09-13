@@ -52,6 +52,7 @@ projectFilesBackup
 captures
 *.iml
 *.md
+!docs/**/*.md
 *.json
 /app/*.json
 

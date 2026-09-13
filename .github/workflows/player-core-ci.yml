@@ -1,0 +1,53 @@
+name: Player core CI
+
+# Compiles the app and runs the platform neutral player core unit tests.
+# The player core module has no Android dependency, so its tests run on the JVM;
+# the app build is kept in the same job because it is what proves the Android
+# glue code around the core still compiles.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  player:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 for Android SDK tools
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-31" "build-tools;31.0.0"
+
+      - name: Set up JDK 11 for Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Run player core unit tests
+        run: ./gradlew --no-daemon -PskipGoogleServices :player-core:test --stacktrace
+
+      - name: Compile the app against the player core
+        run: ./gradlew --no-daemon -PskipGoogleServices :app:assembleFdroidDebug --stacktrace
+
+      - name: Upload player core test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: player-core-test-report
+          path: player-core/build/reports/tests/**
+          if-no-files-found: warn

@@ -1,0 +1,6 @@
+# Player core is a pure JVM library: no build output, IDE files or reports in git.
+build/
+.gradle/
+*.iml
+.idea/
+out/

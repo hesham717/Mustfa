@@ -162,8 +162,10 @@
 
         <activity
             android:name="com.droidtechlab.filemanager.ui.activities.VideoPlayerActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:screenOrientation="unspecified"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
             android:theme="@style/appCompatBlack" />
 
         <activity android:name="com.droidtechlab.filemanager.ui.activities.AboutActivity"
