@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - arena/01a098dc-mustfa
+    # Only rebuild when the app itself changes, so documentation or workflow
+    # edits do not publish an identical APK again.
+    paths:
+      - 'app/**'
   workflow_dispatch:
 
 permissions:
