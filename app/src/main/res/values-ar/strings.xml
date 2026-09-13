@@ -119,6 +119,7 @@
   <string name="goback">عد للخلف</string>
     <string name="newfile">ملف جديد</string>
   <string name="no_files">لا توجد ملفات</string>
+  <string name="empty_state_hint">اسحب للأسفل للتحديث</string>
     <string name="listview">عرض قائمة</string>
   <string name="gridview">عرض شبكي</string>
     <string name="permission">الأذونات</string>

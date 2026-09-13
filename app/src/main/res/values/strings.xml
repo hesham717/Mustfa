@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 
 <!--
     Copyright (C) 2014-2017 Arpit Khurana <arpitkh96@gmail.com>, Vishal Nehra <vishalmeham2@gmail.com>
@@ -132,6 +132,7 @@
     <string name="goback">Go Back</string>
     <string name="newfile">New File</string>
     <string name="no_files">No Files</string>
+    <string name="empty_state_hint">Pull down to refresh</string>
     <string name="used">used space</string>
     <string name="used_by_others">used by others</string>
     <string name="free">free space</string>

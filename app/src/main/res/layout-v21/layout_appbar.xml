@@ -16,8 +16,8 @@
         android:minHeight="?attr/actionBarSize"
         android:theme="?attr/toolbar_theme"
         app:popupTheme="?attr/popup"
-        app:contentInsetLeft="24dp"
-        app:contentInsetStart="24dp"
+        app:contentInsetLeft="@dimen/appbar_inset_start"
+        app:contentInsetStart="@dimen/appbar_inset_start"
         app:layout_scrollFlags="scroll|enterAlways"
         >
 
@@ -26,16 +26,18 @@
     <FrameLayout
         android:visibility="gone"
         android:id="@+id/buttonbarframe"
-        android:layout_height="36dp"
+        android:layout_height="@dimen/appbar_bar_height"
         android:layout_width="match_parent"
-        android:layout_below="@id/action_bar">
+        android:minHeight="@dimen/appbar_bar_height">
 
         <HorizontalScrollView
             android:scrollbars="none"
             android:id="@+id/scroll"
-            android:paddingRight="16dp"
+            android:paddingRight="@dimen/appbar_inset_end"
             android:layout_width="fill_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:paddingLeft="@dimen/appbar_inset_start"
+            android:layout_gravity="center_vertical">
 
             <LinearLayout
                 android:id="@+id/buttons"
@@ -47,7 +49,7 @@
         <LinearLayout
             android:id="@+id/pathbar"
             android:visibility="gone"
-            android:paddingRight="16dp"
+            android:paddingRight="@dimen/appbar_inset_end"
             android:layout_width="fill_parent"
             android:layout_height="wrap_content"
             android:clickable="false"
@@ -61,7 +63,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:clickable="false"
-                android:paddingLeft="72dp">
+                android:paddingLeft="@dimen/appbar_inset_start">
 
                 <LinearLayout
                     android:clickable="false"
@@ -71,15 +73,20 @@
                     <TextView
                         android:clickable="false"
                         android:layout_width="wrap_content"
-                        style="@android:style/TextAppearance.Small"
+                        android:fontFamily="sans-serif-medium"
                         android:textColor="@android:color/white"
+                        android:textSize="@dimen/appbar_path_textsize"
+                        android:maxLines="1"
+                        android:ellipsize="middle"
                         android:layout_height="wrap_content"
                         android:id="@+id/fullpath" />
                     <TextView
                         android:clickable="false"
                         android:layout_width="wrap_content"
-                        style="@android:style/TextAppearance.Small"
+                        android:fontFamily="sans-serif-medium"
                         android:textColor="@android:color/white"
+                        android:textSize="@dimen/appbar_path_textsize"
+                        android:maxLines="1"
                         android:layout_height="wrap_content"
                         android:id="@+id/fullpath_anim"
                         android:visibility="gone"/>
@@ -88,15 +95,26 @@
             <TextView
                 android:clickable="false"
                 android:layout_width="wrap_content"
-                android:textSize="10sp"
-                android:paddingBottom="8dp"
-                android:paddingTop="5dp"
-                android:paddingLeft="72dp"
-                android:textColor="@android:color/white"
+                android:textSize="@dimen/appbar_path_secondary_textsize"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:paddingBottom="6dp"
+                android:paddingTop="2dp"
+                android:paddingLeft="@dimen/appbar_inset_start"
+                android:paddingStart="@dimen/appbar_inset_start"
+                android:textColor="#B3FFFFFF"
                 android:layout_height="wrap_content"
                 android:layout_gravity="start"
                 android:id="@+id/pathname" />
 
         </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/height_divider"
+            android:layout_gravity="bottom"
+            android:background="@color/appbar_divider"
+            android:clickable="false"
+            android:focusable="false" />
     </FrameLayout>
 </com.google.android.material.appbar.AppBarLayout>
