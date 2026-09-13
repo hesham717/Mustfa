@@ -6,7 +6,7 @@ on:
       source_ref:
         description: Commit or ref to build
         required: true
-        default: 43bb205d1fb2ad88501f0288482514c7c763a30d
+        default: 3e0ce6729ff78577909538449a0ce7d266bb6ee8
   push:
     branches:
       - main
@@ -21,7 +21,7 @@ jobs:
       - name: Check out requested source commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || '43bb205d1fb2ad88501f0288482514c7c763a30d' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || '3e0ce6729ff78577909538449a0ce7d266bb6ee8' }}
 
       - name: Set up JDK 17 for Android SDK tools
         uses: actions/setup-java@v4
