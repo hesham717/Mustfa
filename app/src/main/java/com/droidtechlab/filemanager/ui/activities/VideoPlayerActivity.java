@@ -32,6 +32,7 @@ import com.droidtechlab.filemanager.R;
 import com.droidtechlab.filemanager.ui.activities.superclasses.ThemedActivity;
 import com.droidtechlab.filemanager.ui.fragments.preference_fragments.PreferencesConstants;
 import com.droidtechlab.filemanager.ui.icons.Icons;
+import com.droidtechlab.filemanager.ui.views.PlayerGestureTracker;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
@@ -71,6 +72,7 @@ import android.provider.Settings;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -115,8 +117,13 @@ public class VideoPlayerActivity extends ThemedActivity {
   private Uri selectedSubtitleUri;
   private File currentFile;
   private int currentIndex;
+  private PlayerGestureTracker gestureTracker;
   private long gestureStartPosition;
+  private int gestureStartVolume;
+  private float gestureStartBrightness;
   private boolean seekingByGesture;
+  private boolean gestureConsumedTouch;
+  private boolean gestureBlockedByControls;
   private boolean controlsLocked;
   private boolean fullscreen;
   private boolean orientationLocked;
@@ -263,34 +270,29 @@ public class VideoPlayerActivity extends ThemedActivity {
   }
 
   private void configureGestures() {
+    ViewConfiguration configuration = ViewConfiguration.get(this);
+    // Slightly larger than the system slop so that jittery fingers do not start a gesture.
+    gestureTracker = new PlayerGestureTracker(configuration.getScaledTouchSlop() * 1.5f);
     gestureDetector =
         new GestureDetector(
             this,
             new GestureDetector.SimpleOnGestureListener() {
-              private float startX;
-              private float startY;
-              private boolean horizontal;
-              private boolean decided;
-
               @Override
               public boolean onDown(MotionEvent event) {
-                startX = event.getX();
-                startY = event.getY();
-                horizontal = false;
-                decided = false;
-                gestureStartPosition = player == null ? 0 : player.getCurrentPosition();
                 return true;
               }
 
               @Override
               public boolean onSingleTapConfirmed(MotionEvent event) {
+                // A tap is only a tap if the finger never travelled beyond the slop.
+                if (gestureConsumedTouch) return true;
                 if (!controlsLocked) toggleControls();
                 return true;
               }
 
               @Override
               public boolean onDoubleTap(MotionEvent event) {
-                if (controlsLocked) return true;
+                if (controlsLocked || gestureConsumedTouch) return true;
                 if (event.getX() < playerView.getWidth() * 0.34f) {
                   seekBy(-getSeekStepSeconds() * 1000L);
                 } else if (event.getX() > playerView.getWidth() * 0.66f) {
@@ -300,54 +302,109 @@ public class VideoPlayerActivity extends ThemedActivity {
                 }
                 return true;
               }
-
-              @Override
-              public boolean onScroll(
-                  MotionEvent first, MotionEvent current, float distanceX, float distanceY) {
-                if (controlsLocked) return true;
-                float totalX = current.getX() - startX;
-                float totalY = current.getY() - startY;
-                if (!decided && (Math.abs(totalX) > 18 || Math.abs(totalY) > 18)) {
-                  decided = true;
-                  horizontal = Math.abs(totalX) >= Math.abs(totalY);
-                  if (horizontal) seekingByGesture = true;
-                }
-                if (!decided) return true;
-
-                if (horizontal && player != null && player.getDuration() > 0) {
-                  long offset =
-                      (long) (totalX / Math.max(1, playerView.getWidth()) * player.getDuration());
-                  long target = Math.max(0, Math.min(player.getDuration(), gestureStartPosition + offset));
-                  player.seekTo(target);
-                  showGestureMessage((offset >= 0 ? "+" : "") + formatTime(offset) + "  " + formatTime(target));
-                } else {
-                  boolean left = startX < playerView.getWidth() / 2f;
-                  if (left) {
-                    changeBrightness(-totalY / playerView.getHeight());
-                  } else {
-                    changeVolume(-totalY / playerView.getHeight());
-                  }
-                }
-                return true;
-              }
-
-              @Override
-              public boolean onFling(
-                  MotionEvent first, MotionEvent current, float velocityX, float velocityY) {
-                seekingByGesture = false;
-                return true;
-              }
             });
     playerView.setOnTouchListener(
         (view, event) -> {
-          if (controlsLocked && event.getAction() == MotionEvent.ACTION_UP) return true;
-          gestureDetector.onTouchEvent(event);
-          if (event.getAction() == MotionEvent.ACTION_UP) {
-            seekingByGesture = false;
-            scheduleHideControls();
+          switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+              gestureConsumedTouch = false;
+              seekingByGesture = false;
+              if (isTouchOnControls(event)) {
+                // Let the seek bar / buttons handle their own touches.
+                gestureBlockedByControls = true;
+                gestureTracker.cancel();
+                return false;
+              }
+              gestureBlockedByControls = false;
+              gestureTracker.onDown(event.getX(), event.getY());
+              gestureStartPosition = player == null ? 0 : player.getCurrentPosition();
+              gestureStartVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+              gestureStartBrightness = getCurrentBrightness();
+              break;
+            case MotionEvent.ACTION_POINTER_DOWN:
+              // Multi-touch is never a player gesture.
+              gestureTracker.cancel();
+              gestureConsumedTouch = true;
+              seekingByGesture = false;
+              break;
+            case MotionEvent.ACTION_MOVE:
+              if (gestureBlockedByControls || controlsLocked) break;
+              handleGestureMove(event);
+              break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+              if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                gestureTracker.cancel();
+              } else {
+                gestureTracker.onUp();
+              }
+              seekingByGesture = false;
+              gestureBlockedByControls = false;
+              scheduleHideControls();
+              break;
+            default:
+              break;
+          }
+          if (gestureBlockedByControls) return false;
+          if (controlsLocked && event.getActionMasked() == MotionEvent.ACTION_UP) return true;
+          // Only let the tap detector see the touch when it has not become a drag gesture.
+          if (!gestureConsumedTouch || event.getActionMasked() == MotionEvent.ACTION_UP) {
+            gestureDetector.onTouchEvent(event);
           }
           return true;
         });
+  }
+
+  private void handleGestureMove(MotionEvent event) {
+    PlayerGestureTracker.Direction direction = gestureTracker.onMove(event.getX(), event.getY());
+    if (direction == PlayerGestureTracker.Direction.NONE) return;
+    gestureConsumedTouch = true;
+
+    if (direction == PlayerGestureTracker.Direction.HORIZONTAL) {
+      if (player == null || player.getDuration() <= 0) return;
+      seekingByGesture = true;
+      long offset =
+          PlayerGestureTracker.seekOffsetMs(
+              gestureTracker.getDeltaX(), playerView.getWidth(), player.getDuration());
+      long target =
+          Math.max(0, Math.min(player.getDuration(), gestureStartPosition + offset));
+      long applied = target - gestureStartPosition;
+      player.seekTo(target);
+      showGestureMessage(
+          (applied >= 0 ? "+" : "-") + formatTime(Math.abs(applied)) + "  " + formatTime(target));
+    } else {
+      float fraction =
+          PlayerGestureTracker.verticalFraction(gestureTracker.getDeltaY(), playerView.getHeight());
+      boolean left = gestureTracker.getStartX() < playerView.getWidth() / 2f;
+      if (left) {
+        setBrightness(gestureStartBrightness + fraction);
+      } else {
+        int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        setVolume(gestureStartVolume + Math.round(fraction * max));
+      }
+    }
+  }
+
+  /** True when the touch lands on the visible controls (seek bar, buttons, bars). */
+  private boolean isTouchOnControls(MotionEvent event) {
+    if (controls.getVisibility() != View.VISIBLE) return false;
+    int[] playerLocation = new int[2];
+    playerView.getLocationOnScreen(playerLocation);
+    float rawX = playerLocation[0] + event.getX();
+    float rawY = playerLocation[1] + event.getY();
+    return isPointInside(findViewById(R.id.player_top_bar), rawX, rawY)
+        || isPointInside(findViewById(R.id.player_center_controls), rawX, rawY)
+        || isPointInside(findViewById(R.id.player_bottom_bar), rawX, rawY);
+  }
+
+  private static boolean isPointInside(View view, float rawX, float rawY) {
+    if (view == null || view.getVisibility() != View.VISIBLE) return false;
+    int[] location = new int[2];
+    view.getLocationOnScreen(location);
+    return rawX >= location[0]
+        && rawX <= location[0] + view.getWidth()
+        && rawY >= location[1]
+        && rawY <= location[1] + view.getHeight();
   }
 
   private void prepareCurrentVideo(boolean offerResume) {
@@ -475,19 +532,23 @@ public class VideoPlayerActivity extends ThemedActivity {
     showGestureMessage((amount > 0 ? "+" : "-") + getSeekStepSeconds() + "s");
   }
 
-  private void changeVolume(float delta) {
+  private void setVolume(int volume) {
     int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-    int current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-    int volume = Math.max(0, Math.min(max, current + Math.round(delta * max)));
-    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0);
+    volume = Math.max(0, Math.min(max, volume));
+    if (volume != audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) {
+      audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0);
+    }
     showGestureMessage("Volume " + Math.round(volume * 100f / max) + "%");
   }
 
-  private void changeBrightness(float delta) {
+  private float getCurrentBrightness() {
+    float brightness = getWindow().getAttributes().screenBrightness;
+    return brightness < 0 ? initialBrightness : brightness;
+  }
+
+  private void setBrightness(float brightness) {
     WindowManager.LayoutParams attributes = getWindow().getAttributes();
-    float brightness = attributes.screenBrightness;
-    if (brightness < 0) brightness = initialBrightness;
-    attributes.screenBrightness = Math.max(0.05f, Math.min(1f, brightness + delta));
+    attributes.screenBrightness = Math.max(0.05f, Math.min(1f, brightness));
     getWindow().setAttributes(attributes);
     showGestureMessage("Brightness " + Math.round(attributes.screenBrightness * 100) + "%");
   }
