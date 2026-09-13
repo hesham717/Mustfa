@@ -939,7 +939,9 @@ public class VideoPlayerActivity extends ThemedActivity {
       String fps = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE);
       if (fps == null) return null;
       return new FrameStepPlanner(Double.parseDouble(fps));
-    } catch (RuntimeException | NumberFormatException unreadable) {
+    } catch (RuntimeException unreadable) {
+      // NumberFormatException is a RuntimeException, so one clause covers both a missing file and
+      // an unparsable frame rate.
       return null;
     } finally {
       retriever.release();
