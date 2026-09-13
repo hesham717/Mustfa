@@ -1303,13 +1303,15 @@ public class MainActivity extends PermissionsActivity
 
   /** Closes the interactive shell and threads associated */
   private void closeInteractiveShell() {
-    if (isRootExplorer()) {
+    if (isRootExplorer() && shellInteractive != null && handlerThread != null) {
       // close interactive shell and handler thread associated with it
       if (SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
         // let it finish up first with what it's doing
         handlerThread.quitSafely();
       } else handlerThread.quit();
       shellInteractive.close();
+      shellInteractive = null;
+      handlerThread = null;
     }
   }
 

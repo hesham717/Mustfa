@@ -77,6 +77,10 @@ public class AppConfig extends GlideApplication {
     super.onCreate();
     AppCompatDelegate.setCompatVectorFromResourcesEnabled(
         true); // selector in srcCompat isn't supported without this
+    if (backgroundHandlerThread != null && backgroundHandlerThread.isAlive()) {
+      return;
+    }
+
     backgroundHandlerThread = new HandlerThread("app_background");
     instance = this;
 
@@ -101,7 +105,7 @@ public class AppConfig extends GlideApplication {
   @Override
   public void onTerminate() {
     super.onTerminate();
-    backgroundHandlerThread.quit();
+    if (backgroundHandlerThread != null) backgroundHandlerThread.quit();
   }
 
   /**
