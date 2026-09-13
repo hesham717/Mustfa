@@ -41,42 +41,48 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Build fdroid debug APK
-        run: ./gradlew --no-daemon -PskipGoogleServices :app:assembleFdroidDebug --stacktrace
+      - name: Unit tests (player gestures)
+        run: ./gradlew --no-daemon -PskipGoogleServices :app:testFdroidDebugUnitTest --tests '*PlayerGestureTrackerTest*' --tests '*DependencyPinsTest*' --stacktrace
 
-      - name: Prepare APK
+      - name: Build fdroid debug + release APKs
+        run: ./gradlew --no-daemon -PskipGoogleServices :app:assembleFdroidDebug :app:assembleFdroidRelease --stacktrace
+
+      - name: Prepare APKs
         id: apk
         run: |
           set -e
-          APK_PATH=$(find app/build/outputs/apk -name "*.apk" | head -1)
-          echo "found $APK_PATH"
-          cp "$APK_PATH" Mustfa-gesture-fix-debug.apk
-          ls -lh Mustfa-gesture-fix-debug.apk
-          sha256sum Mustfa-gesture-fix-debug.apk | tee apk-sha256.txt
-          echo "sha256=$(cut -d' ' -f1 apk-sha256.txt)" >> "$GITHUB_OUTPUT"
+          DEBUG_APK=$(find app/build/outputs/apk/fdroid/debug -name "*.apk" | head -1)
+          RELEASE_APK=$(find app/build/outputs/apk/fdroid/release -name "*.apk" | head -1)
+          echo "debug=$DEBUG_APK release=$RELEASE_APK"
+          cp "$DEBUG_APK" Mustfa-debug.apk
+          cp "$RELEASE_APK" Mustfa-release.apk
+          ls -lh Mustfa-debug.apk Mustfa-release.apk
+          sha256sum Mustfa-debug.apk Mustfa-release.apk | tee apk-sha256.txt
+          echo "sha256=$(head -1 apk-sha256.txt | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "sha256_release=$(tail -1 apk-sha256.txt | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Publish release with APK
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: gesture-fix-${{ github.run_number }}
+          TAG: build-${{ github.run_number }}
           SHA256: ${{ steps.apk.outputs.sha256 }}
+          SHA256_RELEASE: ${{ steps.apk.outputs.sha256_release }}
         run: |
           set -e
           NOTES=$(cat <<EOF
-          Debug APK built from commit ${GITHUB_SHA} on branch \`arena/01a0990a-mustfa\`.
+          APKs built from commit ${GITHUB_SHA} on branch \`arena/01a0990a-mustfa\` (fdroid flavour, no Google services).
 
-          * Flavour: **fdroid debug** (no Google services), app id \`com.droidtechlab.filemanager.debug\`
-            so it installs next to any existing install.
-          * Contents: video player gesture handling fix (touch slop, axis lock, diagonal rejection,
-            lower seek/volume/brightness sensitivity, no conflict with seek bar/buttons).
-          * SHA-256 of the APK: \`${SHA256}\`
+          * **Mustfa-debug.apk** - app id \`com.droidtechlab.filemanager.debug\`, installs next to any existing install.
+            SHA-256: \`${SHA256}\`
+          * **Mustfa-release.apk** - minified, signed with the repo test keystore, app id \`com.droidtechlab.filemanager\`.
+            SHA-256: \`${SHA256_RELEASE}\`
 
           This is a test build, not an official release.
           EOF
           )
-          gh release create "$TAG" Mustfa-gesture-fix-debug.apk \
+          gh release create "$TAG" Mustfa-debug.apk Mustfa-release.apk \
             --target "$GITHUB_SHA" \
-            --title "Gesture fix test build ($TAG)" \
+            --title "Test build $TAG" \
             --notes "$NOTES" \
             --prerelease
           gh release view "$TAG" --json assets --jq '.assets[].name'
